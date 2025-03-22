@@ -83,7 +83,7 @@ data_length = 256
 fig, ax = plt.subplots()
 ax.set_xlim(-5, 5)  # x-axis limits (length of data)
 ax.set_ylim(-5, 5)
-line, = ax.plot([], [], lw=2)  # Empty plot to update
+line, = ax.plot([], [], lw=0.5)  # Empty plot to update
 
 thread = Thread(target = get_data)
 thread.start()
