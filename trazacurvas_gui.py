@@ -1,6 +1,5 @@
 from tkinter import *
 from tkinter import ttk
-from PIL import ImageTk, Image
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -9,6 +8,8 @@ from threading import Thread
 import sys
 import os
 import time
+
+from modules.gui_commands import show_frequency, show_voltage, show_impedance, open_captures, capture_trace
 
 def get_data():
     while isRun:
@@ -23,48 +24,9 @@ def get_data():
         x_signal = scope.scale_read_data(adc_signals[0])
         y_signal = scope.scale_read_data(adc_signals[1])
 
-def show_frequency():
-    frequency.set(frequency.get())
-
-def show_voltage():
-    voltage.set(voltage.get())
-    if voltage.get() == "200mV":
-        scope.set_ch1_voltage_range(10)
-        scope.set_ch2_voltage_range(10)
-    else:
-        scope.set_ch1_voltage_range(1)
-        scope.set_ch2_voltage_range(1)
-
-def show_impedance():
-    impedance.set(impedance.get())
-
-def capture_trace():
-    plt.savefig("image.png")
-
 def init():
     line.set_data([], [])
     return line,
-
-def open_captures():
-    captures_window = Toplevel(root)
-    captures_window.title("V-I traces captured")
-    captures_window.geometry("800x600")
-    figs = ttk.Frame(captures_window, padding=3)
-    try:
-        image = Image.open(os.path.abspath("image2.png"))
-        # Print image size to verify it loaded correctly
-        print(f"Image size: {image.size}")
-        photo = ImageTk.PhotoImage(image)
-
-        # Create canvas and add image
-        canvas_figs = Canvas(figs, width=640, height=480)
-        canvas_figs.pack()
-        canvas_figs.create_image(0, 0, anchor=NW, image=photo)
-        # Store reference in root to prevent garbage collection
-        canvas.image = photo
-        canvas_figs.photo = photo  # This is important!
-    except Exception as e:
-        print(f"Error loading image: {e}")
 
 # Update function: called for each frame
 def update(frame):
@@ -120,10 +82,6 @@ buffer_size_x = 3072
 buffer_size_y = 3072
 x_signal = []
 y_signal = []
-x_lim_min = -0.5
-x_lim_max = 0.5
-y_lim_min = -0.5
-y_lim_max = 0.5
 
 thread = Thread(target = get_data)
 thread.start()
@@ -137,9 +95,6 @@ root.columnconfigure(0, weight=1)
 root.title("V-I curve tracer")
 #root.wm_iconphoto(True, ImageTk.PhotoImage(Image.open("scope.png")))
 
-# style = ttk.Style()
-# style.configure("TEntry", background="#7AC5CD")
-
 # Creating frames inside main window
 tracer = ttk.Frame(root, padding=3)
 indicators = ttk.Frame(root, padding=10) #, style="TEntry")
@@ -152,8 +107,6 @@ selectors.grid(column=0, row=1, sticky=W)
 fig, ax = plt.subplots()
 ax.set_xlim(-5, 5)
 ax.set_ylim(-5, 5)
-# ax.set_xlim(x_lim_min, x_lim_max)
-# ax.set_ylim(y_lim_min, y_lim_max)
 ax.set_xticklabels([])
 ax.set_yticklabels([])
 line, = ax.plot([], [], lw=1)  # Empty plot to update
@@ -175,31 +128,48 @@ impedance = StringVar()
 # Selectors framing
 # Frequency selection
 ttk.Label(selectors, text="Frequencies: ").grid(column=0, row=0)
-ttk.Radiobutton(selectors, text="5Hz", variable=frequency, value="5Hz", command=show_frequency).grid(column=1, row=0)
-ttk.Radiobutton(selectors, text="20Hz", variable=frequency, value="20Hz", command=show_frequency).grid(column=2, row=0)
-ttk.Radiobutton(selectors, text="50Hz", variable=frequency, value="50Hz", command=show_frequency).grid(column=3, row=0)
-ttk.Radiobutton(selectors, text="60Hz", variable=frequency, value="60Hz", command=show_frequency).grid(column=4, row=0)
-ttk.Radiobutton(selectors, text="200Hz", variable=frequency, value="200Hz", command=show_frequency).grid(column=5, row=0)
-ttk.Radiobutton(selectors, text="500Hz", variable=frequency, value="500Hz", command=show_frequency).grid(column=6, row=0)
-ttk.Radiobutton(selectors, text="2kHz", variable=frequency, value="2kHz", command=show_frequency).grid(column=7, row=0)
-ttk.Radiobutton(selectors, text="5kHz", variable=frequency, value="5kHz", command=show_frequency).grid(column=8, row=0)
+ttk.Radiobutton(selectors, text="5Hz", variable=frequency, value="5Hz",
+                command=lambda: show_frequency(frequency)).grid(column=1, row=0)
+ttk.Radiobutton(selectors, text="20Hz", variable=frequency, value="20Hz",
+                command=lambda: show_frequency(frequency)).grid(column=2, row=0)
+ttk.Radiobutton(selectors, text="50Hz", variable=frequency, value="50Hz",
+                command=lambda: show_frequency(frequency)).grid(column=3, row=0)
+ttk.Radiobutton(selectors, text="60Hz", variable=frequency, value="60Hz",
+                command=lambda: show_frequency(frequency)).grid(column=4, row=0)
+ttk.Radiobutton(selectors, text="200Hz", variable=frequency, value="200Hz",
+                command=lambda: show_frequency(frequency)).grid(column=5, row=0)
+ttk.Radiobutton(selectors, text="500Hz", variable=frequency, value="500Hz",
+                command=lambda: show_frequency(frequency)).grid(column=6, row=0)
+ttk.Radiobutton(selectors, text="2kHz", variable=frequency, value="2kHz",
+                command=lambda: show_frequency(frequency)).grid(column=7, row=0)
+ttk.Radiobutton(selectors, text="5kHz", variable=frequency, value="5kHz",
+                command=lambda: show_frequency(frequency)).grid(column=8, row=0)
 
 # Voltage selection
 ttk.Label(selectors, text="Voltages: ").grid(column=0, row=1)
-ttk.Radiobutton(selectors, text="200mV", variable=voltage, value="200mV", command=show_voltage).grid(column=1, row=1)
-ttk.Radiobutton(selectors, text="3.3V", variable=voltage, value="3.3V", command=show_voltage).grid(column=2, row=1)
-ttk.Radiobutton(selectors, text="5V", variable=voltage, value="5V", command=show_voltage).grid(column=3, row=1)
-ttk.Radiobutton(selectors, text="12V", variable=voltage, value="12V", command=show_voltage).grid(column=4, row=1)
+ttk.Radiobutton(selectors, text="200mV", variable=voltage, value="200mV",
+                command=lambda: show_voltage(voltage, scope)).grid(column=1, row=1)
+ttk.Radiobutton(selectors, text="3.3V", variable=voltage, value="3.3V",
+                command=lambda: show_voltage(voltage, scope)).grid(column=2, row=1)
+ttk.Radiobutton(selectors, text="5V", variable=voltage, value="5V",
+                command=lambda: show_voltage(voltage, scope)).grid(column=3, row=1)
+ttk.Radiobutton(selectors, text="12V", variable=voltage, value="12V",
+                command=lambda: show_voltage(voltage, scope)).grid(column=4, row=1)
 
 # Impedance selection
 ttk.Label(selectors, text="Impedance: ").grid(column=0, row=2)
-ttk.Radiobutton(selectors, text="45R", variable=impedance, value="45R", command=show_impedance).grid(column=1, row=2)
-ttk.Radiobutton(selectors, text="415R", variable=impedance, value="415R", command=show_impedance).grid(column=2, row=2)
-ttk.Radiobutton(selectors, text="726R", variable=impedance, value="726R", command=show_impedance).grid(column=3, row=2)
-ttk.Radiobutton(selectors, text="1.5kR", variable=impedance, value="1.5kR", command=show_impedance).grid(column=4, row=2)
+ttk.Radiobutton(selectors, text="45R", variable=impedance, value="45R",
+                command=lambda: show_impedance).grid(column=1, row=2)
+ttk.Radiobutton(selectors, text="415R", variable=impedance, value="415R",
+                command=lambda: show_impedance).grid(column=2, row=2)
+ttk.Radiobutton(selectors, text="726R", variable=impedance, value="726R",
+                command=lambda: show_impedance).grid(column=3, row=2)
+ttk.Radiobutton(selectors, text="1.5kR", variable=impedance, value="1.5kR",
+                command=lambda: show_impedance).grid(column=4, row=2)
 
 # Capture button
-ttk.Button(selectors, text="Capture trace", command=capture_trace).grid(column=10, row=1, padx=1, sticky=E)
+ttk.Button(selectors, text="Capture trace",
+           command=lambda: capture_trace(plt)).grid(column=10, row=1, padx=1, sticky=E)
 
 # Indicators framing
 ttk.Label(indicators, text="Frequency:").grid(column=0, row=0, padx=1, sticky=NW)
@@ -208,5 +178,7 @@ ttk.Label(indicators, text="Voltage:").grid(column=0, row=2, padx=1, sticky=NW)
 ttk.Label(indicators, textvariable=voltage).grid(column=0, row=3, padx=1, sticky=W)
 ttk.Label(indicators, text="Impedance:").grid(column=0, row=4, padx=1, sticky=NW)
 ttk.Label(indicators, textvariable=impedance).grid(column=0, row=5, padx=1, sticky=W)
-ttk.Button(indicators, text="Show captures", command=open_captures).grid(column=0, row=6, padx=1, sticky=W)
+ttk.Button(indicators, text="Show captures",
+           command=lambda: open_captures(root)).grid(column=0, row=6, padx=1, sticky=W)
+
 root.mainloop()
