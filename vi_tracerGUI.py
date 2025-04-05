@@ -8,7 +8,6 @@ from PyHT6022.LibUsbScope import Oscilloscope
 import sys
 import os
 import serial
-import threading
 from threading import Thread
 from modules.functions_trazacurvas import (show_frequency, show_voltage, show_impedance, capture_trace,
                                            creating_pins, open_profile, close_profile, send_command, frequency_dict,
@@ -17,6 +16,8 @@ from modules.functions_trazacurvas import (show_frequency, show_voltage, show_im
 class VITracerGUI:
 
     def __init__(self, the_root):
+        self.fig = None
+        self.thread_animation = None
         self.calibration = None
         self.scope = None
         self.decoded_answer = None
@@ -67,8 +68,10 @@ class VITracerGUI:
 
         self.create_menu()
         self.create_controls()
-        self.starting_scope()
         self.create_plotter()
+        # self.starting_scope()
+
+        # self.animate_plot()
 
     def create_menu(self):
         # Menu structure
@@ -103,29 +106,29 @@ class VITracerGUI:
         # Frequency selection
         ttk.Label(self.selectors, text="Frequencies: ", style="TLabel").grid(column=0, row=0)
         ttk.Radiobutton(self.selectors, text="5Hz", variable=self.frequency, value="5Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=1, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=1, row=0)
         ttk.Radiobutton(self.selectors, text="20Hz", variable=self.frequency, value="20Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=2, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=2, row=0)
         ttk.Radiobutton(self.selectors, text="50Hz", variable=self.frequency, value="50Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=3, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=3, row=0)
         ttk.Radiobutton(self.selectors, text="60Hz", variable=self.frequency, value="60Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=4, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=4, row=0)
         ttk.Radiobutton(self.selectors, text="200Hz", variable=self.frequency, value="200Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=5, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=5, row=0)
         ttk.Radiobutton(self.selectors, text="500Hz", variable=self.frequency, value="500Hz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=6, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=6, row=0)
         ttk.Radiobutton(self.selectors, text="2kHz", variable=self.frequency, value="2kHz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=7, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=7, row=0)
         ttk.Radiobutton(self.selectors, text="5kHz", variable=self.frequency, value="5kHz",
-                        command=lambda: show_frequency(self.frequency,
-                                                       self.serial_monitor, self.uart)).grid(column=8, row=0)
+                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                                                       self.scope)).grid(column=8, row=0)
 
         # Voltage selection
         ttk.Label(self.selectors, text="Voltages: ").grid(column=0, row=1)
@@ -184,7 +187,7 @@ class VITracerGUI:
         new_profile.resizable(False, False)
         new_profile.title("New board profile")
         new_profile.geometry("800x600")
-        new_profile.iconbitmap("scope.ico")
+        #new_profile.iconbitmap("scope.ico")
         # about.rowconfigure(0, weight=1)
         # about.columnconfigure(0, weight=1)
         equipment = StringVar()
@@ -216,7 +219,7 @@ class VITracerGUI:
         about.resizable(False, False)
         about.title("About this program")
         about.geometry("500x100")
-        about.iconbitmap("scope.ico")
+        #about.iconbitmap("scope.ico")
         about.rowconfigure(0, weight=1)
         about.columnconfigure(0, weight=1)
         Label(about, text="Mi programita version 0.1", pady=20).grid(column=0, row=0)
@@ -227,7 +230,7 @@ class VITracerGUI:
         setup_uart.resizable(False, False)
         setup_uart.title("Configure serial communication")
         setup_uart.geometry("500x300")
-        setup_uart.iconbitmap("scope.ico")
+        #setup_uart.iconbitmap("scope.ico")
         setup_uart.rowconfigure(0, weight=1)
         setup_uart.columnconfigure(0, weight=1)
 
@@ -235,7 +238,7 @@ class VITracerGUI:
         captures_window = Toplevel(self.the_root)
         captures_window.title("V-I traces captured")
         # captures_window.geometry("800x600")
-        captures_window.iconbitmap("scope.ico")
+        #captures_window.iconbitmap("scope.ico")
         figs = ttk.Frame(captures_window, padding=3)
         try:
             photo = PhotoImage(file=(os.path.abspath("image.png")), master=captures_window)
@@ -268,15 +271,14 @@ class VITracerGUI:
 
         # set interface: 0 = BULK, >0 = ISO, 1=3072,2=2048,3=1024 bytes per 125 us
         self.scope.set_interface(0)  # use BULK unless you have specific need for ISO xfer
-
         self.scope.set_num_channels(2)
         self.scope.set_sample_rate(102)
 
         # set the gain for CH1 and CH2
         self.scope.set_ch1_voltage_range(10)
         self.scope.set_ch2_voltage_range(10)
-
         scope_thread = Thread(target=self.get_data)
+        scope_thread.daemon = True
         scope_thread.start()
 
     def get_data(self):
@@ -303,18 +305,19 @@ class VITracerGUI:
 
     def create_plotter(self):
         # Create a figure and axis
-        fig, ax = plt.subplots()
+        self.fig, ax = plt.subplots()
         ax.set_xlim(-5, 5)
         ax.set_ylim(-5, 5)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         self.line, = ax.plot([], [], lw=1)  # Empty plot to update
         # The signal
-        canvas = FigureCanvasTkAgg(fig, master=self.tracer)
+        canvas = FigureCanvasTkAgg(self.fig, master=self.tracer)
         canvas.get_tk_widget().pack()
 
+    def animate_plot(self):
         # Create animation
-        self.ani = FuncAnimation(fig, self.update, frames=100, init_func=self.init, blit=True, interval=0.01)
+        self.ani = FuncAnimation(self.fig, self.update, frames=100, init_func=self.init, blit=True, interval=0.01)
         plt.title('V-I Trace')
         plt.grid()
         plt.yticks([n for n in range(-5, 5)])
@@ -324,15 +327,23 @@ class VITracerGUI:
         try:
             self.uart = serial.Serial('/dev/ttyUSB0', timeout=0.1, write_timeout=0.1)
             self.connection_active = True
-            self.thread_uart = threading.Thread(target=self.read_from_port)
+            self.thread_uart = Thread(target=self.read_from_port)
             self.thread_uart.daemon = True
             self.thread_uart.start()
             self.monitoring_serial = True
             send_command("hello", self.serial_monitor, self.uart)
+            self.starting_scope()
+            self.thread_animation = Thread(target=self.animate_plot())
+            self.thread_animation.daemon = True
+            self.thread_animation.start()
         except Exception as e:
             self.serial_monitor.set(repr(e))
 
     def disconnecting_device(self):
+        self.scope_is_run = False
+        self.scope.stop_capture()
+        time.sleep(0.5)
+        self.scope.close_handle()
         if self.uart is not None:
             send_command("bye", self.serial_monitor, self.uart)
             time.sleep(0.1)
@@ -364,10 +375,12 @@ class VITracerGUI:
             self.connection_active = False
             self.uart.close()
             time.sleep(0.1)
-        self.scope_is_run = False
-        self.scope.stop_capture()
-        time.sleep(0.5)
-        self.scope.close_handle()
+        if self.scope_is_run is True:
+            self.scope_is_run = False
+            time.sleep(0.1)
+            self.scope.stop_capture()
+            time.sleep(0.5)
+            self.scope.close_handle()
         self.the_root.quit()
         self.the_root.destroy()
         sys.exit()

@@ -16,20 +16,32 @@ def send_command(message, serial_monitor, uart):
         serial_monitor.set(repr(e))
 
 
-def show_frequency(frequency, serial_monitor, uart):
-    frequency.set(frequency.get())
-    send_command(frequencies[frequency.get()], serial_monitor, uart)
+def show_frequency(frequency, serial_monitor, uart, obj_scope):
+    if uart is not None:
+        frequency.set(frequency.get())
+        send_command(frequencies[frequency.get()], serial_monitor, uart)
+        if frequency.get() == "5Hz":
+            obj_scope.set_sample_rate(102)
+        elif frequency.get() == "20Hz":
+            obj_scope.set_sample_rate(106)
+        elif frequency.get() == "50Hz" or frequency.get() == "60Hz":
+            obj_scope.set_sample_rate(110)
+        elif frequency.get() == "200Hz":
+            obj_scope.set_sample_rate(150)
+        else:
+            obj_scope.set_sample_rate(1)
 
 
 def show_voltage(voltage, serial_monitor, uart, obj_scope):
-    voltage.set(voltage.get())
-    send_command(voltages[voltage.get()], serial_monitor, uart)
-    if voltage.get() == "200mV":
-        obj_scope.set_ch1_voltage_range(10)
-        obj_scope.set_ch2_voltage_range(10)
-    else:
-        obj_scope.set_ch1_voltage_range(1)
-        obj_scope.set_ch2_voltage_range(1)
+    if uart is not None:
+        voltage.set(voltage.get())
+        send_command(voltages[voltage.get()], serial_monitor, uart)
+        if voltage.get() == "200mV":
+            obj_scope.set_ch1_voltage_range(10)
+            obj_scope.set_ch2_voltage_range(10)
+        else:
+            obj_scope.set_ch1_voltage_range(1)
+            obj_scope.set_ch2_voltage_range(1)
 
 
 def show_impedance(impedance, serial_monitor, uart):
