@@ -70,7 +70,7 @@ class VITracerGUI:
         self.create_controls()
         self.create_plotter()
         # self.starting_scope()
-
+        # testing commit
         # self.animate_plot()
 
     def create_menu(self):
