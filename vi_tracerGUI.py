@@ -13,6 +13,8 @@ from modules.functions_trazacurvas import (show_frequency, show_voltage, show_im
                                            creating_pins, open_profile, close_profile, send_command, frequency_dict,
                                            voltage_dict, impedance_dict)
 
+from modules.new_profile_window import NewProfileWindow
+
 class VITracerGUI:
 
     def __init__(self, the_root):
@@ -51,7 +53,7 @@ class VITracerGUI:
 
         # Creating frames inside main window
         self.tracer = ttk.Frame(root, padding=3)
-        self.indicators = ttk.Frame(root, padding=10)  # , style="TEntry")
+        self.indicators = ttk.Frame(root, padding=10)
         self.selectors = ttk.Frame(root, padding=3)
         self.serial_communication = ttk.Frame(root, padding=3)
         self.tracer.grid(column=0, row=0)
@@ -59,36 +61,24 @@ class VITracerGUI:
         self.selectors.grid(column=0, row=1, sticky=W)
         self.serial_communication.grid(column=0, row=2, sticky=W)
 
-        self.moved_button = "moved.TRadiobutton"
-        self.selected_button = "selected.TRadiobutton"
-        self.unselected_button = "unselected.TRadiobutton"
-        buttons_style = ttk.Style()
-        buttons_style.configure("moved.TRadiobutton", foreground="blue")
-        buttons_style.configure("selected.TRadiobutton", foreground="green")
-        buttons_style.configure("unselected.TRadiobutton", foreground="black")
+        self.populate_menu()
+        self.populate_controls()
+        self.populate_indicators()
+        self.populate_plotter()
 
-        self.create_menu()
-        self.create_controls()
-        self.create_plotter()
-        # self.starting_scope()
-        # testing commit
-        # self.animate_plot()
-
-    def create_menu(self):
+    def populate_menu(self):
         # Menu structure
         menubar = Menu(root)
         self.the_root['menu'] = menubar
         menu_ic_profile = Menu(menubar)
         menu_device = Menu(menubar)
-        menu_edit = Menu(menubar)
         menu_about = Menu(menubar)
         menubar.add_cascade(menu=menu_ic_profile, label='IC Profile')
         menubar.add_cascade(menu=menu_device, label='Device')
-        menubar.add_cascade(menu=menu_edit, label='Edit')
         menubar.add_cascade(menu=menu_about, label='About')
 
         # Menu IC Profile
-        menu_ic_profile.add_command(label='New profile', command=lambda: self.new_profile_window())
+        menu_ic_profile.add_command(label='New profile', command=lambda: NewProfileWindow(self.the_root))
         menu_ic_profile.add_separator()
         menu_ic_profile.add_command(label='Open profile...', command=open_profile)
         menu_ic_profile.add_command(label='Close profile', command=close_profile)
@@ -102,7 +92,7 @@ class VITracerGUI:
         # Menu About
         menu_about.add_command(label='About the program', command=lambda: self.about_window())
 
-    def create_controls(self):
+    def populate_controls(self):
         # Selectors framing
         # Frequency selection
         ttk.Label(self.selectors, text="Frequencies: ", style="TLabel").grid(column=0, row=0)
@@ -167,13 +157,20 @@ class VITracerGUI:
         bt_capture.grid(column=10, row=1, padx=1, sticky=E)
         bt_capture.focus_set()
 
+    def populate_indicators(self):
         # Indicators framing
-        ttk.Label(self.indicators, text="Frequency:").grid(column=0, row=0, padx=1, sticky=NW)
-        ttk.Label(self.indicators, textvariable=self.frequency).grid(column=0, row=1, padx=1, sticky=W)
-        ttk.Label(self.indicators, text="Voltage:").grid(column=0, row=2, padx=1, sticky=NW)
-        ttk.Label(self.indicators, textvariable=self.voltage).grid(column=0, row=3, padx=1, sticky=W)
-        ttk.Label(self.indicators, text="Impedance:").grid(column=0, row=4, padx=1, sticky=NW)
-        ttk.Label(self.indicators, textvariable=self.impedance).grid(column=0, row=5, padx=1, sticky=W)
+        # style = ttk.Style()
+        # style.configure("parameters.TLabel", background="#7AC5CD")
+        font_size = 20
+        ttk.Label(self.indicators, text="Frequency").grid(column=0, row=0, padx=1)
+        ttk.Label(self.indicators, textvariable=self.frequency, font=("", font_size),
+                  foreground="green").grid(column=0, row=1, padx=1)
+        ttk.Label(self.indicators, text="Voltage").grid(column=0, row=2, padx=1)
+        ttk.Label(self.indicators, textvariable=self.voltage, font=("", font_size),
+                  foreground="blue").grid(column=0, row=3, padx=1)
+        ttk.Label(self.indicators, text="Impedance").grid(column=0, row=4, padx=1)
+        ttk.Label(self.indicators, textvariable=self.impedance, font=("", font_size),
+                  foreground="red").grid(column=0, row=5, padx=1)
         ttk.Button(self.indicators, text="Show captures",
                    command=lambda: self.open_captures()).grid(column=0, row=6, padx=1, sticky=W)
 
@@ -182,38 +179,6 @@ class VITracerGUI:
                   text="Monitoring serial:").grid(column=0, row=0, padx=1, sticky=W)
         ttk.Label(self.serial_communication, width=75, font=("Arial", 10),
                   textvariable=self.serial_monitor, background="white").grid(column=1, row=0, padx=1, sticky=W)
-
-    def new_profile_window(self):
-        new_profile = Toplevel(self.the_root)
-        new_profile.resizable(False, False)
-        new_profile.title("New board profile")
-        new_profile.geometry("800x600")
-        new_profile.tk.call('wm', 'iconphoto', new_profile._w, self.icon)
-        # about.rowconfigure(0, weight=1)
-        # about.columnconfigure(0, weight=1)
-        equipment = StringVar()
-        board = StringVar()
-        id_board = StringVar()
-        ic_name = StringVar()
-        datasheet = StringVar()
-        number_pins = IntVar()
-        ttk.Label(new_profile, text="Equipment: ").grid(column=0, row=0, pady=2, padx=2, sticky=E)
-        ttk.Entry(new_profile, width=30, textvariable=equipment).grid(column=1, row=0, pady=2, padx=2)
-        ttk.Label(new_profile, text="Board: ").grid(column=2, row=0, pady=2, padx=2, sticky=W)
-        ttk.Entry(new_profile, width=30, textvariable=board).grid(column=3, row=0, pady=2, padx=2)
-        ttk.Label(new_profile, text="Integrated circuits: ").grid(column=0, row=1, pady=20, padx=2)
-
-        ttk.Label(new_profile, text="ID in board (U...): ").grid(column=0, row=2, pady=2, padx=2, sticky=W)
-        ttk.Entry(new_profile, width=30, textvariable=id_board).grid(column=1, row=2, pady=2, padx=2)
-        ttk.Label(new_profile, text="IC part ").grid(column=0, row=3, pady=2, padx=2, sticky=W)
-        ttk.Entry(new_profile, width=30, textvariable=ic_name).grid(column=1, row=3, pady=2, padx=2)
-        ttk.Label(new_profile, text="Datasheet: ").grid(column=0, row=4, pady=2, padx=2, sticky=W)
-        ttk.Entry(new_profile, width=30, textvariable=datasheet).grid(column=1, row=4, pady=2, padx=2)
-        ttk.Label(new_profile, text="Number of pins: ").grid(column=0, row=5, pady=2, padx=2, sticky=W)
-        ttk.Entry(new_profile, width=10, textvariable=number_pins).grid(column=1, row=5, pady=2, padx=2, sticky=W)
-        ttk.Button(new_profile, text="Add...", command=lambda: creating_pins()).grid(column=2, row=5, pady=8,
-                                                                                    padx=8, sticky=W)
-        ttk.Button(new_profile, text="OK", command=new_profile.destroy).grid(column=3, row=10, pady=8, padx=8, sticky=E)
 
     def about_window(self):
         about = Toplevel(self.the_root)
@@ -295,16 +260,15 @@ class VITracerGUI:
         self.line.set_data([], [])
         return self.line,
 
-    # Update function: called for each frame
     def update(self, frame):
-        # Define the data to plot by taking a slice of the data list
+        # Update function: called for each frame
         plot_x_signal = [self.x_signal[frame] for frame in range(self.buffer_size_x)]
         plot_y_signal = [self.y_signal[frame] for frame in range(self.buffer_size_y)]
 
         self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
         return self.line,
 
-    def create_plotter(self):
+    def populate_plotter(self):
         # Create a figure and axis
         self.fig, ax = plt.subplots()
         ax.set_xlim(-5, 5)
@@ -391,6 +355,5 @@ if __name__ == "__main__":
     # Creating main window
     root = Tk()
     app = VITracerGUI(root)
-    # style = ttk.Style()
-    # style.configure("TEntry", background="#7AC5CD")
+
     root.mainloop()
