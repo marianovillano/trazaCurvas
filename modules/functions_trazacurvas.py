@@ -53,10 +53,6 @@ def capture_trace(plt):
     plt.savefig("image.png")
 
 
-def creating_pins():
-    pass
-
-
 def open_profile():
     pass
 

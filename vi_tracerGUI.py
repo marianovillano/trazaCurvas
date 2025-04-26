@@ -9,9 +9,8 @@ import sys
 import os
 import serial
 from threading import Thread
-from modules.functions_trazacurvas import (show_frequency, show_voltage, show_impedance, capture_trace,
-                                           creating_pins, open_profile, close_profile, send_command, frequency_dict,
-                                           voltage_dict, impedance_dict)
+from modules.functions_trazacurvas import (show_frequency, show_voltage, show_impedance, capture_trace, open_profile,
+                                           close_profile, send_command, frequency_dict, voltage_dict, impedance_dict)
 
 from modules.new_profile_window import NewProfileWindow
 
@@ -159,8 +158,6 @@ class VITracerGUI:
 
     def populate_indicators(self):
         # Indicators framing
-        # style = ttk.Style()
-        # style.configure("parameters.TLabel", background="#7AC5CD")
         font_size = 20
         ttk.Label(self.indicators, text="Frequency").grid(column=0, row=0, padx=1)
         ttk.Label(self.indicators, textvariable=self.frequency, font=("", font_size),
@@ -203,8 +200,6 @@ class VITracerGUI:
     def open_captures(self):
         captures_window = Toplevel(self.the_root)
         captures_window.title("V-I traces captured")
-        # captures_window.geometry("800x600")
-        #captures_window.iconbitmap("scope.ico")
         figs = ttk.Frame(captures_window, padding=3)
         try:
             photo = PhotoImage(file=(os.path.abspath("image.png")), master=captures_window)
