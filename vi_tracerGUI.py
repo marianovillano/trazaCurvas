@@ -9,14 +9,15 @@ import sys
 import os
 import serial
 from threading import Thread
-from modules.functions_trazacurvas import (show_frequency, show_voltage, show_impedance, capture_trace, open_profile,
-                                           close_profile, send_command, frequency_dict, voltage_dict, impedance_dict)
+
+from modules.new_functions_trazacurvas import Functions
 
 from modules.new_profile_window import NewProfileWindow
 
-class VITracerGUI:
+class VITracerGUI(Functions):
 
     def __init__(self, the_root):
+        Functions.__init__(self)
         self.fig = None
         self.thread_animation = None
         self.calibration = None
@@ -45,7 +46,6 @@ class VITracerGUI:
         self.voltage.set("200mV")
         self.impedance = StringVar()
         self.impedance.set("45R")
-        self.serial_monitor = StringVar()
         self.connection_active = False
         self.monitoring_serial = False
         self.scope_is_run = False
@@ -79,8 +79,8 @@ class VITracerGUI:
         # Menu IC Profile
         menu_ic_profile.add_command(label='New profile', command=lambda: NewProfileWindow(self.the_root))
         menu_ic_profile.add_separator()
-        menu_ic_profile.add_command(label='Open profile...', command=open_profile)
-        menu_ic_profile.add_command(label='Close profile', command=close_profile)
+        menu_ic_profile.add_command(label='Open profile...', command=self.open_profile)
+        menu_ic_profile.add_command(label='Close profile', command=self.close_profile)
 
         # Menu device
         menu_device.add_command(label='Connect...', command=self.connecting_device)
@@ -96,63 +96,55 @@ class VITracerGUI:
         # Frequency selection
         ttk.Label(self.selectors, text="Frequencies: ", style="TLabel").grid(column=0, row=0)
         ttk.Radiobutton(self.selectors, text="5Hz", variable=self.frequency, value="5Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=1, row=0)
         ttk.Radiobutton(self.selectors, text="20Hz", variable=self.frequency, value="20Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=2, row=0)
         ttk.Radiobutton(self.selectors, text="50Hz", variable=self.frequency, value="50Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=3, row=0)
         ttk.Radiobutton(self.selectors, text="60Hz", variable=self.frequency, value="60Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=4, row=0)
         ttk.Radiobutton(self.selectors, text="200Hz", variable=self.frequency, value="200Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=5, row=0)
         ttk.Radiobutton(self.selectors, text="500Hz", variable=self.frequency, value="500Hz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=6, row=0)
         ttk.Radiobutton(self.selectors, text="2kHz", variable=self.frequency, value="2kHz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=7, row=0)
         ttk.Radiobutton(self.selectors, text="5kHz", variable=self.frequency, value="5kHz",
-                        command=lambda: show_frequency(self.frequency, self.serial_monitor, self.uart,
+                        command=lambda: self.show_frequency(self.frequency, self.uart,
                                                        self.scope)).grid(column=8, row=0)
 
         # Voltage selection
         ttk.Label(self.selectors, text="Voltages: ").grid(column=0, row=1)
         ttk.Radiobutton(self.selectors, text="200mV", variable=self.voltage, value="200mV",
-                        command=lambda: show_voltage(self.voltage, self.serial_monitor,
-                                                     self.uart, self.scope)).grid(column=1, row=1)
+                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=1, row=1)
         ttk.Radiobutton(self.selectors, text="3.3V", variable=self.voltage, value="3.3V",
-                        command=lambda: show_voltage(self.voltage, self.serial_monitor,
-                                                     self.uart, self.scope)).grid(column=2, row=1)
+                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=2, row=1)
         ttk.Radiobutton(self.selectors, text="5V", variable=self.voltage, value="5V",
-                        command=lambda: show_voltage(self.voltage, self.serial_monitor,
-                                                     self.uart, self.scope)).grid(column=3, row=1)
+                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=3, row=1)
         ttk.Radiobutton(self.selectors, text="9V", variable=self.voltage, value="9V",
-                        command=lambda: show_voltage(self.voltage, self.serial_monitor,
-                                                     self.uart, self.scope)).grid(column=4, row=1)
+                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=4, row=1)
 
         # Impedance selection
         ttk.Label(self.selectors, text="Impedance: ").grid(column=0, row=2)
         ttk.Radiobutton(self.selectors, text="45R", variable=self.impedance, value="45R",
-                        command=lambda: show_impedance(self.impedance, self.serial_monitor,
-                                                       self.uart)).grid(column=1, row=2)
+                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=1, row=2)
         ttk.Radiobutton(self.selectors, text="415R", variable=self.impedance, value="415R",
-                        command=lambda: show_impedance(self.impedance, self.serial_monitor,
-                                                       self.uart)).grid(column=2, row=2)
+                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=2, row=2)
         ttk.Radiobutton(self.selectors, text="726R", variable=self.impedance, value="726R",
-                        command=lambda: show_impedance(self.impedance, self.serial_monitor,
-                                                       self.uart)).grid(column=3, row=2)
+                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=3, row=2)
         ttk.Radiobutton(self.selectors, text="1.5kR", variable=self.impedance, value="1.5kR",
-                        command=lambda: show_impedance(self.impedance, self.serial_monitor,
-                                                       self.uart)).grid(column=4, row=2)
+                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=4, row=2)
 
         # Capture button
         bt_capture = (ttk.Button(self.selectors, text="Capture trace",
-                   command=lambda: capture_trace(plt)))
+                   command=lambda: self.capture_trace(plt)))
         bt_capture.grid(column=10, row=1, padx=1, sticky=E)
         bt_capture.focus_set()
 
@@ -171,11 +163,10 @@ class VITracerGUI:
         ttk.Button(self.indicators, text="Show captures",
                    command=lambda: self.open_captures()).grid(column=0, row=6, padx=1, sticky=W)
 
-        # Serial monitoring
-        ttk.Label(self.serial_communication,
-                  text="Monitoring serial:").grid(column=0, row=0, padx=1, sticky=W)
-        ttk.Label(self.serial_communication, width=75, font=("Arial", 10),
-                  textvariable=self.serial_monitor, background="white").grid(column=1, row=0, padx=1, sticky=W)
+        # Event monitoring
+        ttk.Label(self.serial_communication, text="Events monitor:").grid(column=0, row=0, padx=1, sticky=W)
+        self.log = Text(self.serial_communication, state="disabled", width=82, height=5, wrap="word", bg="light gray")
+        self.log.grid(column=0, row=1, padx=5, pady=5, sticky=W)
 
     def about_window(self):
         about = Toplevel(self.the_root)
@@ -211,7 +202,7 @@ class VITracerGUI:
             captures_window.photo = photo
             captures_window.photo2 = photo2
         except Exception as e:
-            print(f"Error loading image: {e}")
+            self.write_to_log(f"Error loading image: {e}")
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -257,11 +248,15 @@ class VITracerGUI:
 
     def update(self, frame):
         # Update function: called for each frame
-        plot_x_signal = [self.x_signal[frame] for frame in range(self.buffer_size_x)]
-        plot_y_signal = [self.y_signal[frame] for frame in range(self.buffer_size_y)]
+        try:
+            plot_x_signal = [self.x_signal[frame] for frame in range(self.buffer_size_x)]
+            plot_y_signal = [self.y_signal[frame] for frame in range(self.buffer_size_y)]
 
-        self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
-        return self.line,
+            self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
+            return self.line,
+        except IndexError as e:
+            self.write_to_log(repr(e))
+            return None
 
     def populate_plotter(self):
         # Create a figure and axis
@@ -291,13 +286,13 @@ class VITracerGUI:
             self.thread_uart.daemon = True
             self.thread_uart.start()
             self.monitoring_serial = True
-            send_command("hello", self.serial_monitor, self.uart)
+            self.send_command("hello", self.uart)
             self.starting_scope()
             self.thread_animation = Thread(target=self.animate_plot())
             self.thread_animation.daemon = True
             self.thread_animation.start()
         except Exception as e:
-            self.serial_monitor.set(repr(e))
+            self.write_to_log(repr(e))
 
     def disconnecting_device(self):
         self.scope_is_run = False
@@ -305,7 +300,7 @@ class VITracerGUI:
         time.sleep(0.5)
         self.scope.close_handle()
         if self.uart is not None:
-            send_command("bye", self.serial_monitor, self.uart)
+            self.send_command("bye", self.uart)
             time.sleep(0.1)
             self.connection_active = False
             self.uart.close()
@@ -314,23 +309,23 @@ class VITracerGUI:
     def read_from_port(self):
         while self.connection_active:  # Check the flag in the reading loop
             try:
-                if self.uart.inWaiting()>0:
+                if self.uart.inWaiting() > 0:
                     answer = self.uart.read_until()
                     self.decoded_answer = answer.decode("utf-8").replace("\r\n", "")
                     if self.decoded_answer[0] == "F":
-                        self.frequency.set(frequency_dict[self.decoded_answer])
+                        self.frequency.set(self.frequency_dict[self.decoded_answer])
                     elif self.decoded_answer[0] == "V":
-                        self.voltage.set(voltage_dict[self.decoded_answer])
+                        self.voltage.set(self.voltage_dict[self.decoded_answer])
                     elif self.decoded_answer[0] == "R":
-                        self.impedance.set(impedance_dict[self.decoded_answer])
-                    self.serial_monitor.set(self.decoded_answer)
+                        self.impedance.set(self.impedance_dict[self.decoded_answer])
+                    self.write_to_log("Receiving: " + self.decoded_answer)
             except Exception as e:
-                self.serial_monitor.set(repr(e))
+                self.write_to_log(repr(e))
                 break
 
     def on_closing(self):
         if self.uart is not None:
-            send_command("bye", self.serial_monitor, self.uart)
+            self.send_command("bye", self.uart)
             time.sleep(0.1)
             self.connection_active = False
             self.uart.close()
