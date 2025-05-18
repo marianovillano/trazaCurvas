@@ -10,7 +10,7 @@ import os
 import serial
 from threading import Thread
 
-from modules.new_functions_trazacurvas import Functions
+from modules.functions_trazacurvas import Functions
 
 from modules.new_profile_window import NewProfileWindow
 
