@@ -18,6 +18,8 @@ class VITracerGUI(Functions):
 
     def __init__(self, the_root):
         Functions.__init__(self)
+        self.y_signal_past = None
+        self.x_signal_past = None
         self.fig = None
         self.thread_animation = None
         self.calibration = None
@@ -241,6 +243,10 @@ class VITracerGUI(Functions):
             self.buffer_size_y = len(adc_signals[1])
             self.x_signal = self.scope.scale_read_data(adc_signals[0])
             self.y_signal = self.scope.scale_read_data(adc_signals[1])
+            if len(self.x_signal) == 3072:
+                self.x_signal_past = self.x_signal
+            if len(self.y_signal) == 3072:
+                self.y_signal_past = self.y_signal
 
     def init(self):
         self.line.set_data([], [])
@@ -256,7 +262,11 @@ class VITracerGUI(Functions):
             return self.line,
         except IndexError as e:
             self.write_to_log(repr(e))
-            return None
+            plot_x_signal = [self.x_signal_past[frame] for frame in range(self.buffer_size_x)]
+            plot_y_signal = [self.y_signal_past[frame] for frame in range(self.buffer_size_y)]
+
+            self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
+            return self.line,
 
     def populate_plotter(self):
         # Create a figure and axis
@@ -289,7 +299,7 @@ class VITracerGUI(Functions):
             self.send_command("hello", self.uart)
             self.starting_scope()
             self.thread_animation = Thread(target=self.animate_plot())
-            self.thread_animation.daemon = True
+            #self.thread_animation.daemon = True
             self.thread_animation.start()
         except Exception as e:
             self.write_to_log(repr(e))
@@ -299,6 +309,7 @@ class VITracerGUI(Functions):
         self.scope.stop_capture()
         time.sleep(0.5)
         self.scope.close_handle()
+        self.thread_animation.join()
         if self.uart is not None:
             self.send_command("bye", self.uart)
             time.sleep(0.1)
@@ -336,6 +347,7 @@ class VITracerGUI(Functions):
             self.scope.stop_capture()
             time.sleep(0.5)
             self.scope.close_handle()
+            self.thread_animation.join()
         self.the_root.quit()
         self.the_root.destroy()
         sys.exit()
@@ -343,6 +355,7 @@ class VITracerGUI(Functions):
 
 if __name__ == "__main__":
     # Creating main window
+    os.system("clear")
     root = Tk()
     app = VITracerGUI(root)
 
