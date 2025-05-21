@@ -333,6 +333,8 @@ class VITracerGUI(Functions):
             self.thread_animation.start()
         except Exception as e:
             self.write_to_log(repr(e))
+        time.sleep(0.5)
+        self.setup_uart.destroy()
 
     def disconnecting_device(self):
         self.scope_is_run = False
@@ -385,9 +387,9 @@ class VITracerGUI(Functions):
 
 if __name__ == "__main__":
     # Creating main window
-    if sys.platform == "Linux":
+    if sys.platform == "linux":
         os.system("clear")
-    elif sys.platform == "Windows":
+    elif sys.platform == "windows":
         os.system("cls")
     root = Tk()
     app = VITracerGUI(root)
