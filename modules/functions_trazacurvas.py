@@ -5,7 +5,7 @@ class Functions:
 
     def __init__(self):
         self.log = None
-        self.dir_captures = "imgcaptures"
+        self.dir_captures = "image_captures"
         self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7",
                             "5kHz": "8"}
         self.voltages = {"200mV": "9", "3.3V": "10", "5V": "11", "9V": "12"}

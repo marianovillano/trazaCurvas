@@ -1,4 +1,5 @@
 import time
+import tkinter
 from tkinter import *
 from tkinter import ttk
 import matplotlib.pyplot as plt
@@ -8,6 +9,7 @@ from PyHT6022.LibUsbScope import Oscilloscope
 import sys
 import os
 import serial
+import serial.tools.list_ports
 from threading import Thread
 
 from modules.functions_trazacurvas import Functions
@@ -18,6 +20,10 @@ class VITracerGUI(Functions):
 
     def __init__(self, the_root):
         Functions.__init__(self)
+        self.connect_button = None
+        self.baud_combobox = None
+        self.port_combox = None
+        self.setup_uart = None
         self.y_signal_past = None
         self.x_signal_past = None
         self.fig = None
@@ -85,10 +91,8 @@ class VITracerGUI(Functions):
         menu_ic_profile.add_command(label='Close profile', command=self.close_profile)
 
         # Menu device
-        menu_device.add_command(label='Connect...', command=self.connecting_device)
+        menu_device.add_command(label='Connect...', command=self.connecting_window)
         menu_device.add_command(label='Disconnect', command=self.disconnecting_device)
-        menu_device.add_separator()
-        menu_device.add_command(label='Setup', command=lambda: self.setup_communication_window())
 
         # Menu About
         menu_about.add_command(label='About the program', command=lambda: self.about_window())
@@ -180,15 +184,6 @@ class VITracerGUI(Functions):
         about.columnconfigure(0, weight=1)
         Label(about, text="Mi programita version 0.1", pady=20).grid(column=0, row=0)
         ttk.Button(about, text="OK", command=about.destroy).grid(column=0, row=2, pady=8, padx=8, sticky=E)
-
-    def setup_communication_window(self):
-        setup_uart = Toplevel(self.the_root)
-        setup_uart.resizable(False, False)
-        setup_uart.title("Configure serial communication")
-        setup_uart.geometry("500x300")
-        setup_uart.tk.call('wm', 'iconphoto', setup_uart._w, self.icon)
-        setup_uart.rowconfigure(0, weight=1)
-        setup_uart.columnconfigure(0, weight=1)
 
     def open_captures(self):
         captures_window = Toplevel(self.the_root)
@@ -288,9 +283,44 @@ class VITracerGUI(Functions):
         plt.yticks([n for n in range(-5, 5)])
         plt.xticks([n for n in range(-5, 5)])
 
+    def connecting_window(self):
+        self.setup_uart = Toplevel()
+        self.setup_uart.resizable(False, False)
+        self.setup_uart.title("Configure serial communication")
+        self.icon = PhotoImage(file='scope.gif')
+        self.setup_uart.tk.call('wm', 'iconphoto', self.setup_uart._w, self.icon)
+        ttk.Label(self.setup_uart, text="Select Port:").grid(row=0, column=0, padx=40, pady=30, sticky=W)
+        ports = [port.device for port in serial.tools.list_ports.comports()]
+        if len(ports) == 0:
+            ports = "______NO_PORTS______"
+        self.port_combox = ttk.Combobox(self.setup_uart, values=ports, state="readonly")
+        self.port_combox.bind("<Button-1>", self.callback)
+        self.port_combox.grid(row=0, column=1, padx=5, pady=30)
+        self.port_combox.set(ports)
+
+        ttk.Label(self.setup_uart, text="Select Baud Rate:").grid(row=1, column=0, padx=40, pady=3, sticky=W)
+        self.baud_combobox = ttk.Combobox(self.setup_uart, values=["2400", "4800", "9600", "14400", "19200",
+                                                                   "57600", "115200"], state="readonly")
+        self.baud_combobox.set("9600")
+        self.baud_combobox.grid(row=1, column=1, padx=5, pady=3)
+
+        self.connect_button = ttk.Button(self.setup_uart, text="Connect", command= lambda: self.connecting_device())
+        if ports == "______NO_PORTS______":
+            self.connect_button.config(state=tkinter.DISABLED)
+        self.connect_button.grid(row=4, column=1, padx=90, pady=30)
+
+    def callback(self, event):
+        ports = [port.device for port in serial.tools.list_ports.comports()]
+        if len(ports) > 0:
+            self.port_combox.set(ports)
+            self.port_combox["values"] = ports
+            self.connect_button.config(state=tkinter.NORMAL)
+
     def connecting_device(self):
+        port = self.port_combox.get()
+        baud = int(self.baud_combobox.get())
         try:
-            self.uart = serial.Serial('/dev/ttyUSB0', timeout=0.1, write_timeout=0.1)
+            self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
             self.connection_active = True
             self.thread_uart = Thread(target=self.read_from_port)
             self.thread_uart.daemon = True
@@ -355,7 +385,10 @@ class VITracerGUI(Functions):
 
 if __name__ == "__main__":
     # Creating main window
-    os.system("clear")
+    if sys.platform == "Linux":
+        os.system("clear")
+    elif sys.platform == "Windows":
+        os.system("cls")
     root = Tk()
     app = VITracerGUI(root)
 
