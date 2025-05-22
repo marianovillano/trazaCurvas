@@ -204,31 +204,30 @@ class VITracerGUI(Functions):
 # --------------------------------------------------------------------------------------------------------------------
 
     def starting_scope(self):
-        self.scope_is_run = True
         self.scope = Oscilloscope()
         self.scope.setup()
-        if not self.scope.open_handle():
-            print("oscilloscope not detected")
-            sys.exit(-1)
+        if self.scope.open_handle():
+            # upload correct firmware into device's RAM
+            if not self.scope.is_device_firmware_present:
+                self.scope.flash_firmware()
 
-        # upload correct firmware into device's RAM
-        if not self.scope.is_device_firmware_present:
-            self.scope.flash_firmware()
+            # read calibration values from EEPROM
+            self.calibration = self.scope.get_calibration_values()
 
-        # read calibration values from EEPROM
-        self.calibration = self.scope.get_calibration_values()
+            # set interface: 0 = BULK, >0 = ISO, 1=3072,2=2048,3=1024 bytes per 125 us
+            self.scope.set_interface(0)  # use BULK unless you have specific need for ISO xfer
+            self.scope.set_num_channels(2)
+            self.scope.set_sample_rate(102)
 
-        # set interface: 0 = BULK, >0 = ISO, 1=3072,2=2048,3=1024 bytes per 125 us
-        self.scope.set_interface(0)  # use BULK unless you have specific need for ISO xfer
-        self.scope.set_num_channels(2)
-        self.scope.set_sample_rate(102)
-
-        # set the gain for CH1 and CH2
-        self.scope.set_ch1_voltage_range(10)
-        self.scope.set_ch2_voltage_range(10)
-        scope_thread = Thread(target=self.get_data)
-        scope_thread.daemon = True
-        scope_thread.start()
+            # set the gain for CH1 and CH2
+            self.scope.set_ch1_voltage_range(10)
+            self.scope.set_ch2_voltage_range(10)
+            scope_thread = Thread(target=self.get_data)
+            scope_thread.daemon = True
+            scope_thread.start()
+            self.scope_is_run = True
+        else:
+            self.write_to_log("Oscilloscope not detected")
 
     def get_data(self):
         while self.scope_is_run:
@@ -320,17 +319,18 @@ class VITracerGUI(Functions):
         port = self.port_combox.get()
         baud = int(self.baud_combobox.get())
         try:
-            self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
-            self.connection_active = True
-            self.thread_uart = Thread(target=self.read_from_port)
-            self.thread_uart.daemon = True
-            self.thread_uart.start()
-            self.monitoring_serial = True
-            self.send_command("hello", self.uart)
             self.starting_scope()
-            self.thread_animation = Thread(target=self.animate_plot())
-            #self.thread_animation.daemon = True
-            self.thread_animation.start()
+            if self.scope_is_run:
+                self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
+                self.connection_active = True
+                self.thread_uart = Thread(target=self.read_from_port)
+                self.thread_uart.daemon = True
+                self.thread_uart.start()
+                self.monitoring_serial = True
+                self.send_command("hello", self.uart)
+                self.thread_animation = Thread(target=self.animate_plot())
+                # self.thread_animation.daemon = True
+                self.thread_animation.start()
         except Exception as e:
             self.write_to_log(repr(e))
         time.sleep(0.5)
