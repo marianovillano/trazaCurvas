@@ -1,5 +1,6 @@
 from tkinter import *
-from tkinter import ttk
+import tkinter as tk
+from tkinter import ttk, messagebox
 from tkinter import filedialog
 import xml.etree.ElementTree as Et
 
@@ -25,7 +26,7 @@ class NewProfileWindow:
         self.new_profile.title("New board profile")
         self.icon = PhotoImage(file='scope.gif')
         self.new_profile.tk.call('wm', 'iconphoto', self.new_profile._w, self.icon)
-        self.new_profile.geometry("790x260")
+        self.new_profile.geometry("700x300")
         self.equipment = StringVar()
         self.board = StringVar()
         self.id_in_board = StringVar()
@@ -33,27 +34,51 @@ class NewProfileWindow:
         self.datasheet = StringVar()
         self.number_pins = IntVar()
         self.number_pins.set(1)
-        ttk.Label(self.new_profile, text="Equipment: ").grid(column=0, row=0, pady=2, padx=2, sticky=E)
-        ttk.Entry(self.new_profile, width=30, textvariable=self.equipment).grid(column=1, row=0, pady=2, padx=2)
-        ttk.Label(self.new_profile, text="Board: ").grid(column=2, row=0, pady=2, padx=2, sticky=E)
-        ttk.Entry(self.new_profile, width=30, textvariable=self.board).grid(column=3, row=0, pady=2, padx=2)
-        ttk.Label(self.new_profile, text="Integrated circuits: ").grid(column=1, row=1, pady=10, padx=2, sticky=W)
 
-        ttk.Label(self.new_profile, text="ID in board (U...): ").grid(column=0, row=2, pady=2, padx=2, sticky=E)
-        ttk.Entry(self.new_profile, width=30, textvariable=self.id_in_board).grid(column=1, row=2, pady=2, padx=2)
-        ttk.Label(self.new_profile, text="IC part: ").grid(column=0, row=3, pady=2, padx=2, sticky=E)
-        ttk.Entry(self.new_profile, width=30, textvariable=self.ic_part).grid(column=1, row=3, pady=2, padx=2)
-        ttk.Label(self.new_profile, text="Datasheet: ").grid(column=0, row=4, pady=2, padx=2, sticky=E)
-        ttk.Entry(self.new_profile, width=30, textvariable=self.datasheet).grid(column=1, row=4, pady=2, padx=2)
-        ttk.Label(self.new_profile, text="Number of pins: ").grid(column=0, row=5, pady=2, padx=2, sticky=E)
-        ttk.Spinbox(self.new_profile, from_=1.0, to=100.0, textvariable=self.number_pins,
-                    state="readonly", width=5).grid(column=1, row=5, pady=2, padx=2, sticky=W)
-        ttk.Button(self.new_profile, text="Add IC",
-                   command=lambda: self.adding_ic()).grid(column=1, row=6, pady=8, padx=8, sticky=W)
-        ttk.Button(self.new_profile, text="Create...",
-                   command=lambda: self.creating_profile()).grid(column=3, row=10, pady=8, padx=8, sticky=E)
-        ttk.Button(self.new_profile, text="Cancel", command=self.new_profile.destroy).grid(column=4, row=10, pady=8,
+        self.upper = ttk.Frame(self.new_profile, padding=3)
+        self.left = ttk.Frame(self.new_profile, padding=3)
+        self.right = ttk.Frame(self.new_profile, padding=3)
+        self.bottom = ttk.Frame(self.new_profile, padding=3)
+        self.upper.grid(column=0, row=0, sticky=N)
+        self.left.grid(column=0, row=1, sticky=W)
+        self.right.grid(column=1, row=1, sticky=E)
+        # self.right.grid_columnconfigure(0, weight=1)
+        # self.right.grid_rowconfigure(0, weight=1)
+        self.bottom.grid(column=0, row=2, sticky=S)
+
+        ttk.Label(self.upper, text="Equipment: ").grid(column=0, row=0, pady=2, padx=2, sticky=E)
+        ttk.Entry(self.upper, width=30, textvariable=self.equipment).grid(column=1, row=0, pady=2, padx=2)
+        ttk.Label(self.upper, text="Board: ").grid(column=0, row=1, pady=2, padx=2, sticky=E)
+        ttk.Entry(self.upper, width=30, textvariable=self.board).grid(column=1, row=1, pady=2, padx=2)
+
+        ttk.Label(self.left, text="Integrated circuits: ").grid(column=0, row=0, pady=10, padx=2, sticky=W)
+        ttk.Label(self.left, text="ID in board (U...): ").grid(column=0, row=1, pady=2, padx=2, sticky=W)
+        ttk.Entry(self.left, width=30, textvariable=self.id_in_board).grid(column=1, row=1, pady=2, padx=2)
+        ttk.Label(self.left, text="IC part: ").grid(column=0, row=2, pady=2, padx=2, sticky=W)
+        ttk.Entry(self.left, width=30, textvariable=self.ic_part).grid(column=1, row=2, pady=2, padx=2)
+        ttk.Label(self.left, text="Datasheet: ").grid(column=0, row=3, pady=2, padx=2, sticky=W)
+        ttk.Entry(self.left, width=30, textvariable=self.datasheet).grid(column=1, row=3, pady=2, padx=2)
+        ttk.Label(self.left, text="Number of pins: ").grid(column=0, row=4, pady=2, padx=2, sticky=W)
+        ttk.Spinbox(self.left, from_=1.0, to=100.0, textvariable=self.number_pins,
+                    state="readonly", width=5).grid(column=1, row=4, pady=2, padx=2, sticky=W)
+        ttk.Button(self.left, text="Add IC",
+                   command=lambda: self.adding_ic()).grid(column=1, row=5, pady=8, padx=8, sticky=W)
+
+        ttk.Button(self.bottom, text="Create...",
+                   command=lambda: self.creating_profile()).grid(column=0, row=0, pady=8, padx=8, sticky=E)
+        ttk.Button(self.bottom, text="Close", command=self.new_profile.destroy).grid(column=1, row=0, pady=8,
                                                                                            padx=8, sticky=W)
+
+        # Previous DB to insert to xml
+        ttk.Label(self.right, text="ICs:").grid(column=0, row=0, padx=1, sticky=W)
+        self.db = ttk.Treeview(self.right, columns=("id_in_board", "info"), show="headings", height=5)
+        self.db.heading("id_in_board", text="ID in Board")
+        self.db.heading("info", text="Info")
+        self.db.column("id_in_board", width=80, anchor="center", stretch=False)
+        self.db.column("info", width=150, anchor="center", stretch=False)
+        self.db.grid(column=0, row=1, padx=5, pady=5, sticky=W)
+        btn_delete = tk.Button(self.right, text="Delete IC", command=self.delete_selected_item)
+        btn_delete.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="w")
 
     def creating_pins(self):
         pins = ttk.Frame(self.new_profile, padding=3)
@@ -88,7 +113,6 @@ class NewProfileWindow:
                 row = 1
                 column += 2
 
-
     def adding_ic(self):
         self.cache_ic.append(self.id_in_board.get())
         self.cache_ic.append(self.ic_part.get())
@@ -101,8 +125,23 @@ class NewProfileWindow:
         self.ic_part.set("")
         self.datasheet.set("")
         self.number_pins.set(1)
-        print(self.temporal_db)
+        #print(self.temporal_db)
+        for item in self.db.get_children():
+            self.db.delete(item)
+        for id_in_board, info in self.temporal_db.items():
+            self.db.insert("", tk.END, values=(id_in_board, ", ".join(map(str, info))))
 
+    def delete_selected_item(self):
+        """Remove o item selecionado do Treeview e do dicionário."""
+        selected_items = self.db.selection()
+        if not selected_items:
+            messagebox.showwarning("Warning!", "Select a item to exclude!")
+            return
+        for item in selected_items:
+            id_in_board = self.db.item(item, 'values')[0]
+            if id_in_board in self.temporal_db:
+                del self.temporal_db[id_in_board]
+            self.db.delete(item)
 
     def creating_profile(self):
         self.adding_ic()
