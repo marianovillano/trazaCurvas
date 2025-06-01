@@ -337,17 +337,19 @@ class VITracerGUI(Functions):
         self.setup_uart.destroy()
 
     def disconnecting_device(self):
-        self.scope_is_run = False
-        self.scope.stop_capture()
-        time.sleep(0.5)
-        self.scope.close_handle()
-        self.thread_animation.join()
-        if self.uart is not None:
+        if self.scope is not None and self.uart is not None:
+            self.scope_is_run = False
+            self.scope.stop_capture()
+            time.sleep(0.5)
+            self.scope.close_handle()
+            self.thread_animation.join()
             self.send_command("bye", self.uart)
             time.sleep(0.1)
             self.connection_active = False
             self.uart.close()
             time.sleep(0.1)
+        else:
+            self.write_to_log("Nothing to disconnect")
 
     def read_from_port(self):
         while self.connection_active:  # Check the flag in the reading loop
