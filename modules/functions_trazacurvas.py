@@ -1,9 +1,13 @@
 import os.path
 from datetime import datetime
+from tkinter import filedialog
+from tkinter import *
+from tkinter import ttk
 
 class Functions:
 
     def __init__(self):
+        self.captures = None
         self.log = None
         self.dir_captures = "image_captures"
         self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7",
@@ -78,7 +82,21 @@ class Functions:
         self.log['state'] = 'disabled'
 
     def open_profile(self):
-        pass
+        filename = filedialog.askopenfile(title="Select a profile", filetypes=[("XML files", "*.xml")], mode="r+")
+
+        if filename:
+            print(filename)
+            self.the_root.title("V-I curve tracer: " + str(filename.name))
+            self.write_to_log("abri")
+            s = ttk.Style()
+            s.configure('captures.TFrame', background='white')
+            self.captures = ttk.Frame(self.the_root, padding=3, style='captures.TFrame')
+            self.captures.configure(width=500, height=500)
+            self.captures.grid_propagate(False)
+            self.captures.grid(column=2, row=0, padx=20, pady=20, sticky=N)
+
+            ttk.Label(self.captures, text="Prueba").grid(column=0, row=0, sticky=N)
+            filename.close()
 
     def close_profile(self):
         pass
