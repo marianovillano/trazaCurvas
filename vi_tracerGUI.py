@@ -20,12 +20,13 @@ class VITracerGUI(Functions):
 
     def __init__(self, the_root):
         Functions.__init__(self)
+        self.canvas = None
         self.connect_button = None
         self.baud_combobox = None
         self.port_combox = None
         self.setup_uart = None
-        self.y_signal_past = None
-        self.x_signal_past = None
+        self.y_signal_past = []
+        self.x_signal_past = []
         self.fig = None
         self.thread_animation = None
         self.calibration = None
@@ -222,10 +223,9 @@ class VITracerGUI(Functions):
             # set the gain for CH1 and CH2
             self.scope.set_ch1_voltage_range(10)
             self.scope.set_ch2_voltage_range(10)
-            scope_thread = Thread(target=self.get_data)
-            scope_thread.daemon = True
-            scope_thread.start()
             self.scope_is_run = True
+            self.scope_thread = Thread(target=self.get_data)
+            self.scope_thread.start()
         else:
             self.write_to_log("Oscilloscope not detected")
 
@@ -248,6 +248,8 @@ class VITracerGUI(Functions):
 
     def update(self, frame):
         # Update function: called for each frame
+        plot_x_signal = []
+        plot_y_signal = []
         try:
             plot_x_signal = [self.x_signal[frame] for frame in range(self.buffer_size_x)]
             plot_y_signal = [self.y_signal[frame] for frame in range(self.buffer_size_y)]
@@ -256,8 +258,10 @@ class VITracerGUI(Functions):
             return self.line,
         except IndexError as e:
             self.write_to_log(repr(e))
-            plot_x_signal = [self.x_signal_past[frame] for frame in range(self.buffer_size_x)]
-            plot_y_signal = [self.y_signal_past[frame] for frame in range(self.buffer_size_y)]
+            if len(self.x_signal_past) == 3072:
+                plot_x_signal = [self.x_signal_past[frame] for frame in range(self.buffer_size_x)]
+            if len(self.y_signal_past) == 3072:
+                plot_y_signal = [self.y_signal_past[frame] for frame in range(self.buffer_size_y)]
 
             self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
             return self.line,
@@ -271,8 +275,10 @@ class VITracerGUI(Functions):
         ax.set_yticklabels([])
         self.line, = ax.plot([], [], lw=1)  # Empty plot to update
         # The signal
-        canvas = FigureCanvasTkAgg(self.fig, master=self.tracer)
-        canvas.get_tk_widget().pack()
+        if self.canvas is not None:
+            self.canvas.get_tk_widget().destroy()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.tracer)
+        self.canvas.get_tk_widget().pack()
 
     def animate_plot(self):
         # Create animation
@@ -307,7 +313,6 @@ class VITracerGUI(Functions):
         self.check = ttk.Checkbutton(self.setup_uart, text="Connect Scope", variable=self.use_scope,
                                      offvalue=False, onvalue=True)
         self.check.grid(row=2, column=1, padx=5, pady=5)
-        print(self.use_scope.get())
 
         self.connect_button = ttk.Button(self.setup_uart, text="Connect", command= lambda: self.connecting_device())
         if ports == "______NO_PORTS______":
@@ -321,73 +326,30 @@ class VITracerGUI(Functions):
             self.port_combox["values"] = ports
             self.connect_button.config(state=tkinter.NORMAL)
 
-    def connecting_device(self):
-        port = self.port_combox.get()
-        baud = int(self.baud_combobox.get())
-        try:
-            self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
-            self.connection_active = True
-            self.thread_uart = Thread(target=self.read_from_port)
-            self.thread_uart.daemon = True
-            self.thread_uart.start()
-            self.monitoring_serial = True
-            self.send_command("hello", self.uart)
-        except Exception as e:
-            self.write_to_log(repr(e))
-        time.sleep(1)
-        if self.use_scope.get() is True:
-            self.starting_scope()
-            if self.scope_is_run:
-                self.thread_animation = Thread(target=self.animate_plot())
-                self.thread_animation.start()
-        time.sleep(0.5)
-        self.setup_uart.destroy()
-
-    def disconnecting_device(self):
-        if self.uart is not None:
-            self.send_command("bye", self.uart)
-            time.sleep(0.1)
-            self.connection_active = False
-            self.uart.close()
-            time.sleep(0.1)
-        else:
-            self.write_to_log("Nothing to disconnect")
-        if self.scope is not None:
-            self.scope_is_run = False
-            self.scope.stop_capture()
-            time.sleep(0.5)
-            self.scope.close_handle()
-            self.thread_animation.join()
-
-
     # def connecting_device(self):
     #     port = self.port_combox.get()
     #     baud = int(self.baud_combobox.get())
     #     try:
-    #         self.starting_scope()
-    #         if self.scope_is_run:
-    #             self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
-    #             self.connection_active = True
-    #             self.thread_uart = Thread(target=self.read_from_port)
-    #             self.thread_uart.daemon = True
-    #             self.thread_uart.start()
-    #             self.monitoring_serial = True
-    #             self.send_command("hello", self.uart)
-    #             self.thread_animation = Thread(target=self.animate_plot())
-    #             # self.thread_animation.daemon = True
-    #             self.thread_animation.start()
+    #         self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
+    #         self.connection_active = True
+    #         self.thread_uart = Thread(target=self.read_from_port)
+    #         self.thread_uart.daemon = True
+    #         self.thread_uart.start()
+    #         self.monitoring_serial = True
+    #         self.send_command("hello", self.uart)
     #     except Exception as e:
     #         self.write_to_log(repr(e))
+    #     time.sleep(1)
+    #     if self.use_scope.get() is True:
+    #         self.starting_scope()
+    #         if self.scope_is_run:
+    #             self.thread_animation = Thread(target=self.animate_plot())
+    #             self.thread_animation.start()
     #     time.sleep(0.5)
     #     self.setup_uart.destroy()
-
+    #
     # def disconnecting_device(self):
-    #     if self.scope is not None and self.uart is not None:
-    #         self.scope_is_run = False
-    #         self.scope.stop_capture()
-    #         time.sleep(0.5)
-    #         self.scope.close_handle()
-    #         self.thread_animation.join()
+    #     if self.uart is not None:
     #         self.send_command("bye", self.uart)
     #         time.sleep(0.1)
     #         self.connection_active = False
@@ -395,6 +357,51 @@ class VITracerGUI(Functions):
     #         time.sleep(0.1)
     #     else:
     #         self.write_to_log("Nothing to disconnect")
+    #     if self.scope is not None:
+    #         self.scope_is_run = False
+    #         self.scope.stop_capture()
+    #         time.sleep(0.5)
+    #         self.scope.close_handle()
+    #         self.thread_animation.join()
+
+
+    def connecting_device(self):
+        port = self.port_combox.get()
+        baud = int(self.baud_combobox.get())
+        try:
+            self.starting_scope()
+            if self.scope_is_run:
+                self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
+                self.connection_active = True
+                self.thread_uart = Thread(target=self.read_from_port)
+                self.thread_uart.daemon = True
+                self.thread_uart.start()
+                self.monitoring_serial = True
+                self.send_command("hello", self.uart)
+                self.populate_plotter()
+                self.thread_animation = Thread(target=self.animate_plot())
+                # self.thread_animation.daemon = True
+                self.thread_animation.start()
+        except Exception as e:
+            self.write_to_log(repr(e))
+        time.sleep(0.5)
+        self.setup_uart.destroy()
+
+    def disconnecting_device(self):
+        if self.scope is not None and self.uart is not None:
+            self.scope_is_run = False
+            self.scope.stop_capture()
+            time.sleep(0.5)
+            self.scope.close_handle()
+            self.thread_animation.join()
+            self.scope_thread.join()
+            self.send_command("bye", self.uart)
+            time.sleep(0.1)
+            self.connection_active = False
+            self.uart.close()
+            time.sleep(0.1)
+        else:
+            self.write_to_log("Nothing to disconnect")
 
     def read_from_port(self):
         while self.connection_active:  # Check the flag in the reading loop
@@ -427,6 +434,7 @@ class VITracerGUI(Functions):
             time.sleep(0.5)
             self.scope.close_handle()
             self.thread_animation.join()
+            self.scope_thread.join()
         self.the_root.quit()
         self.the_root.destroy()
         sys.exit()
@@ -438,6 +446,7 @@ if __name__ == "__main__":
         os.system("clear")
     elif sys.platform == "windows":
         os.system("cls")
+    print("Starting program...")
     root = Tk()
     app = VITracerGUI(root)
 
