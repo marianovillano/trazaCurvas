@@ -34,16 +34,17 @@ class Functions:
         if uart is not None:
             frequency.set(frequency.get())
             self.send_command(self.frequencies[frequency.get()], uart)
-            if frequency.get() == "5Hz":
-                obj_scope.set_sample_rate(102)
-            elif frequency.get() == "20Hz":
-                obj_scope.set_sample_rate(106)
-            elif frequency.get() == "50Hz" or frequency.get() == "60Hz":
-                obj_scope.set_sample_rate(110)
-            elif frequency.get() == "200Hz":
-                obj_scope.set_sample_rate(150)
-            else:
-                obj_scope.set_sample_rate(1)
+            if self.use_scope.get() is True:
+                if frequency.get() == "5Hz":
+                    obj_scope.set_sample_rate(102)
+                elif frequency.get() == "20Hz":
+                    obj_scope.set_sample_rate(106)
+                elif frequency.get() == "50Hz" or frequency.get() == "60Hz":
+                    obj_scope.set_sample_rate(110)
+                elif frequency.get() == "200Hz":
+                    obj_scope.set_sample_rate(150)
+                else:
+                    obj_scope.set_sample_rate(1)
         else:
             self.write_to_log("UART connection object isn't initiated yet")
 
@@ -51,12 +52,13 @@ class Functions:
         if uart is not None:
             voltage.set(voltage.get())
             self.send_command(self.voltages[voltage.get()], uart)
-            if voltage.get() == "200mV":
-                obj_scope.set_ch1_voltage_range(10)
-                obj_scope.set_ch2_voltage_range(10)
-            else:
-                obj_scope.set_ch1_voltage_range(1)
-                obj_scope.set_ch2_voltage_range(1)
+            if self.use_scope.get() is True:
+                if voltage.get() == "200mV":
+                    obj_scope.set_ch1_voltage_range(10)
+                    obj_scope.set_ch2_voltage_range(10)
+                else:
+                    obj_scope.set_ch1_voltage_range(1)
+                    obj_scope.set_ch2_voltage_range(1)
         else:
             self.write_to_log("UART connection object isn't initiated yet")
 

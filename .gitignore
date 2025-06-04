@@ -2,3 +2,4 @@ ejemplos
 tests.py
 *.xml
 /modules/temp
+/image_captures
