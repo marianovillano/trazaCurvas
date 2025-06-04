@@ -25,8 +25,6 @@ class VITracerGUI(Functions):
         self.baud_combobox = None
         self.port_combox = None
         self.setup_uart = None
-        self.y_signal_past = []
-        self.x_signal_past = []
         self.fig = None
         self.thread_animation = None
         self.calibration = None
@@ -36,6 +34,9 @@ class VITracerGUI(Functions):
         self.line = None
         self.ani = None
         self.uart = None
+        self.use_scope = BooleanVar(value=False)
+        self.y_signal_past = []
+        self.x_signal_past = []
         self.x_signal = []
         self.y_signal = []
         self.buffer_size_x = 3072
@@ -309,7 +310,7 @@ class VITracerGUI(Functions):
         self.baud_combobox.set("9600")
         self.baud_combobox.grid(row=1, column=1, padx=5, pady=3)
 
-        self.use_scope = BooleanVar(value=True)
+        self.use_scope.set(True)
         self.check = ttk.Checkbutton(self.setup_uart, text="Connect Scope", variable=self.use_scope,
                                      offvalue=False, onvalue=True)
         self.check.grid(row=2, column=1, padx=5, pady=5)
