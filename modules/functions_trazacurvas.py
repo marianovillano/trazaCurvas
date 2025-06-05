@@ -3,12 +3,18 @@ from datetime import datetime
 from tkinter import filedialog
 from tkinter import *
 from tkinter import ttk
+import xml.etree.ElementTree as Et
 
 class Functions:
 
     def __init__(self):
         self.captures = None
         self.log = None
+        self.pin_numbers = IntVar(value=1)
+        self.ic_name = StringVar()
+        self.ic_label = StringVar()
+        self.board_name = StringVar()
+        self.pin_captured = 1
         self.dir_captures = "image_captures"
         self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7",
                             "5kHz": "8"}
@@ -66,11 +72,6 @@ class Functions:
         impedance.set(impedance.get())
         self.send_command(self.d_impedance[impedance.get()], uart)
 
-    def capture_trace(self, plt):
-        if not os.path.exists(self.dir_captures):
-            os.mkdir(self.dir_captures)
-        plt.savefig(self.dir_captures + "/" + "image.png")
-
     def write_to_log(self, msg):
         number_of_lines = int(self.log.index('end - 1 line').split('.')[0])
         self.log['state'] = 'normal'
@@ -84,21 +85,46 @@ class Functions:
         self.log['state'] = 'disabled'
 
     def open_profile(self):
-        filename = filedialog.askopenfile(title="Select a profile", filetypes=[("XML files", "*.xml")], mode="r+")
+        s = ttk.Style()
+        s.configure('captures.TFrame', background='white')
+        self.captures = ttk.Frame(self.the_root, padding=3, style='captures.TFrame')
+        self.captures.configure(width=550, height=500)
+        self.captures.grid_propagate(False)
+        self.captures.grid(column=2, row=0, padx=20, pady=20, sticky=N)
+        ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2)
+        self.entry_board_name = (ttk.Entry(self.captures, width=35, textvariable=self.board_name))
+        self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3)
+        ttk.Label(self.captures, text="Pin numbers: ").grid(column=0, row=1, pady=2, padx=2)
+        self.entry_pin_numbers = (ttk.Entry(self.captures, width=5, textvariable=self.pin_numbers))
+        self.entry_pin_numbers.grid(column=1, row=1, pady=2, padx=2)
+        ttk.Label(self.captures, text="IC name: ").grid(column=2, row=1, pady=2, padx=2)
+        self.entry_ic_name = (ttk.Entry(self.captures, width=25, textvariable=self.ic_name))
+        self.entry_ic_name.grid(column=3, row=1, pady=2, padx=2)
+        ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=1, pady=2, padx=2)
+        self.entry_ic_label = (ttk.Entry(self.captures, width=5, textvariable=self.ic_label))
+        self.entry_ic_label.grid(column=5, row=1, pady=2, padx=2)
+        ttk.Button(self.captures, text="Save captures", command=lambda: self.saving()).grid(column=6, row=1, padx=1, sticky=W)
 
-        if filename:
-            print(filename)
-            self.the_root.title("V-I curve tracer: " + str(filename.name))
-            self.write_to_log("abri")
-            s = ttk.Style()
-            s.configure('captures.TFrame', background='white')
-            self.captures = ttk.Frame(self.the_root, padding=3, style='captures.TFrame')
-            self.captures.configure(width=500, height=500)
-            self.captures.grid_propagate(False)
-            self.captures.grid(column=2, row=0, padx=20, pady=20, sticky=N)
+    def capture_trace(self, plt):
+        if not os.path.exists(self.dir_captures):
+            os.mkdir(self.dir_captures)
+        if self.pin_captured > self.pin_numbers.get():
+            self.write_to_log("No more pins for this IC")
+        else:
+            plt.savefig(self.dir_captures + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
+                        + "pin" + str(self.pin_captured) + ".png")
+            self.entry_pin_numbers.config(state="disabled")
+            self.pin_captured += 1
 
-            ttk.Label(self.captures, text="Prueba").grid(column=0, row=0, sticky=N)
-            filename.close()
+    def saving(self):
+        folder_selected = filedialog.askdirectory(title="Select a place where the profile will be created")
+
+        if folder_selected:
+            new_folder_path = os.path.join(folder_selected, self.board_name.get())
+            os.makedirs(new_folder_path, exist_ok=True)
+            print(f"Pasta criada em: {new_folder_path}")
+        else:
+            print("Nenhuma pasta selecionada.")
 
     def close_profile(self):
         pass
