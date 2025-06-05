@@ -1,9 +1,12 @@
 import os.path
 from datetime import datetime
 from tkinter import filedialog
+from tkinter import messagebox
 from tkinter import *
 from tkinter import ttk
 import xml.etree.ElementTree as Et
+from warnings import showwarning
+
 
 class Functions:
 
@@ -108,13 +111,16 @@ class Functions:
     def capture_trace(self, plt):
         if not os.path.exists(self.dir_captures):
             os.mkdir(self.dir_captures)
-        if self.pin_captured > self.pin_numbers.get():
-            self.write_to_log("No more pins for this IC")
+        if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
+            messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
         else:
-            plt.savefig(self.dir_captures + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
-                        + "pin" + str(self.pin_captured) + ".png")
-            self.entry_pin_numbers.config(state="disabled")
-            self.pin_captured += 1
+            if self.pin_captured > self.pin_numbers.get():
+                self.write_to_log("No more pins for this IC")
+            else:
+                plt.savefig(self.dir_captures + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
+                            + "pin" + str(self.pin_captured) + ".png")
+                self.entry_pin_numbers.config(state="disabled")
+                self.pin_captured += 1
 
     def saving(self):
         folder_selected = filedialog.askdirectory(title="Select a place where the profile will be created")
