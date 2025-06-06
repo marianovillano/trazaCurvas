@@ -4,20 +4,27 @@ from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import *
 from tkinter import ttk
-import xml.etree.ElementTree as Et
-from warnings import showwarning
 
 
 class Functions:
 
     def __init__(self):
+        self.new_folder_tree = None
+        self.new_folder_path = None
+        self.already_created = False
+        self.new_ic = False
+        self.entry_ic_name = None
+        self.entry_pin_numbers = None
+        self.entry_ic_label = None
+        self.entry_board_name = None
         self.captures = None
         self.log = None
         self.pin_numbers = IntVar(value=1)
+        self.pin_captured = 1
+        self.show_pin_captured = IntVar(value=0)
         self.ic_name = StringVar()
         self.ic_label = StringVar()
         self.board_name = StringVar()
-        self.pin_captured = 1
         self.dir_captures = "image_captures"
         self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7",
                             "5kHz": "8"}
@@ -87,7 +94,7 @@ class Functions:
         self.log.see("5.0")
         self.log['state'] = 'disabled'
 
-    def open_profile(self):
+    def make_profile(self):
         s = ttk.Style()
         s.configure('captures.TFrame', background='white')
         self.captures = ttk.Frame(self.the_root, padding=3, style='captures.TFrame')
@@ -95,42 +102,69 @@ class Functions:
         self.captures.grid_propagate(False)
         self.captures.grid(column=2, row=0, padx=20, pady=20, sticky=N)
         ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2)
-        self.entry_board_name = (ttk.Entry(self.captures, width=35, textvariable=self.board_name))
+        self.entry_board_name = ttk.Entry(self.captures, width=35, textvariable=self.board_name)
         self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3)
-        ttk.Label(self.captures, text="Pin numbers: ").grid(column=0, row=1, pady=2, padx=2)
-        self.entry_pin_numbers = (ttk.Entry(self.captures, width=5, textvariable=self.pin_numbers))
-        self.entry_pin_numbers.grid(column=1, row=1, pady=2, padx=2)
-        ttk.Label(self.captures, text="IC name: ").grid(column=2, row=1, pady=2, padx=2)
-        self.entry_ic_name = (ttk.Entry(self.captures, width=25, textvariable=self.ic_name))
-        self.entry_ic_name.grid(column=3, row=1, pady=2, padx=2)
-        ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=1, pady=2, padx=2)
-        self.entry_ic_label = (ttk.Entry(self.captures, width=5, textvariable=self.ic_label))
-        self.entry_ic_label.grid(column=5, row=1, pady=2, padx=2)
-        ttk.Button(self.captures, text="Save captures", command=lambda: self.saving()).grid(column=6, row=1, padx=1, sticky=W)
+        ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=0, pady=2, padx=2)
+        self.entry_ic_label = ttk.Entry(self.captures, width=5, textvariable=self.ic_label)
+        self.entry_ic_label.grid(column=5, row=0, pady=2, padx=2)
+        ttk.Button(self.captures, text="Creating tree", command=lambda: self.create_tree()).grid(column=6, row=0,
+                                                                                                 padx=1, sticky=W)
 
     def capture_trace(self, plt):
-        if not os.path.exists(self.dir_captures):
-            os.mkdir(self.dir_captures)
+        self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
+        os.makedirs(self.new_folder_path, exist_ok=True)
+        if self.new_ic:
+            self.pin_captured = 1
+            self.show_pin_captured.set(self.pin_captured - 1)
+            self.new_ic = False
+
         if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
             messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
         else:
             if self.pin_captured > self.pin_numbers.get():
-                self.write_to_log("No more pins for this IC")
+                messagebox.showwarning("Already done...", message="No more pins for this IC")
+                self.entry_ic_label.focus()
             else:
-                plt.savefig(self.dir_captures + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
+                plt.savefig(self.new_folder_path + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
                             + "pin" + str(self.pin_captured) + ".png")
                 self.entry_pin_numbers.config(state="disabled")
+                self.entry_ic_name.config(state="disabled")
                 self.pin_captured += 1
+                self.show_pin_captured.set(self.pin_captured - 1)
 
-    def saving(self):
+    def create_tree(self):
+        if self.already_created:
+            self.entry_ic_name.config(state="enabled")
+            self.entry_pin_numbers.config(state="enabled")
+
         folder_selected = filedialog.askdirectory(title="Select a place where the profile will be created")
 
         if folder_selected:
-            new_folder_path = os.path.join(folder_selected, self.board_name.get())
-            os.makedirs(new_folder_path, exist_ok=True)
-            print(f"Pasta criada em: {new_folder_path}")
+            self.new_folder_tree = os.path.join(folder_selected, self.board_name.get())
+            self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
+            os.makedirs(self.new_folder_path, exist_ok=True)
+            self.write_to_log(f"Created folder in {self.new_folder_path}")
+            self.already_created = True
+            self.new_ic = True
+            ttk.Label(self.captures, text="Pin numbers: ").grid(column=0, row=1, pady=2, padx=2)
+            self.entry_pin_numbers = ttk.Entry(self.captures, width=5, textvariable=self.pin_numbers)
+            self.entry_pin_numbers.grid(column=1, row=1, pady=2, padx=2)
+            ttk.Label(self.captures, text="IC name: ").grid(column=2, row=1, pady=2, padx=2)
+            self.entry_ic_name = ttk.Entry(self.captures, width=25, textvariable=self.ic_name)
+            self.entry_ic_name.grid(column=3, row=1, pady=2, padx=2)
+            ttk.Button(self.captures, text="New IC...", command=lambda: self.add_new_ic()).grid(column=4, row=1,
+                                                                                                padx=1, sticky=W)
+            ttk.Label(self.captures, text="Nº of pins captured: ").grid(column=0, row=2, pady=2, padx=2, columnspan=2)
+            ttk.Label(self.captures, textvariable=self.show_pin_captured).grid(column=2, row=2, pady=2, padx=2)
         else:
-            print("Nenhuma pasta selecionada.")
+            self.write_to_log("Folder not selected")
+
+    def add_new_ic(self):
+        self.entry_ic_name.config(state="enabled")
+        self.entry_pin_numbers.config(state="enabled")
+        self.entry_ic_label.focus()
+        self.ic_label.set("")
+        self.new_ic = True
 
     def close_profile(self):
         pass

@@ -14,12 +14,11 @@ from threading import Thread
 
 from modules.functions_trazacurvas import Functions
 
-from modules.new_profile_window import NewProfileWindow
-
 class VITracerGUI(Functions):
 
     def __init__(self, the_root):
         Functions.__init__(self)
+        self.check = None
         self.canvas = None
         self.connect_button = None
         self.baud_combobox = None
@@ -87,10 +86,10 @@ class VITracerGUI(Functions):
         menubar.add_cascade(menu=menu_about, label='About')
 
         # Menu IC Profile
-        menu_ic_profile.add_command(label='New profile', command=lambda: NewProfileWindow(self.the_root))
+        menu_ic_profile.add_command(label='Capture IC traces', command=self.make_profile)
+        menu_ic_profile.add_command(label='Open pin comparisons')
         menu_ic_profile.add_separator()
-        menu_ic_profile.add_command(label='Open profile...', command=self.open_profile)
-        menu_ic_profile.add_command(label='Close profile', command=self.close_profile)
+        menu_ic_profile.add_command(label='Close IC traces/comparisons', command=self.close_profile)
 
         # Menu device
         menu_device.add_command(label='Connect...', command=self.connecting_window)
