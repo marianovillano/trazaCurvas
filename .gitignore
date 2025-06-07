@@ -4,3 +4,4 @@ tests.py
 *.xml
 /modules/temp
 /image_captures
+comparing.png
