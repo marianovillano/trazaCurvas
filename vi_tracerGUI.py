@@ -360,6 +360,8 @@ class VITracerGUI(Functions):
                         self.voltage.set(self.voltage_dict[self.decoded_answer])
                     elif self.decoded_answer[0] == "R":
                         self.impedance.set(self.impedance_dict[self.decoded_answer])
+                    elif self.decoded_answer[0] == "c":
+                        self.capture_trace(plt)
                     self.write_to_log("Receiving: " + self.decoded_answer)
             except Exception as e:
                 self.write_to_log(repr(e))
