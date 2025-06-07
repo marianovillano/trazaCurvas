@@ -265,7 +265,6 @@ class VITracerGUI(Functions):
     def animate_plot(self):
         # Create animation
         self.ani = FuncAnimation(self.fig, self.update, frames=100, init_func=self.init, blit=True, interval=0.01)
-        plt.title('V-I Trace')
         plt.grid()
         plt.yticks([n for n in range(-5, 5)])
         plt.xticks([n for n in range(-5, 5)])

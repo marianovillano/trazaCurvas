@@ -24,8 +24,8 @@ class Functions:
         self.pin_captured = 1
         self.row_to_show = 0
         self.column_to_show = 0
-        self.photo_list = []  # Armazena referências dos PhotoImages
-        self.label_list = []  # Armazena os Label(s) que exibem as imagens
+        self.photo_list = []
+        self.label_list = []
         self.show_pin_captured = IntVar(value=0)
         self.ic_name = StringVar()
         self.ic_label = StringVar()
@@ -100,8 +100,6 @@ class Functions:
         self.log['state'] = 'disabled'
 
     def make_profile(self):
-        # s = ttk.Style()
-        # s.configure('captures.TFrame', background='white')
         self.captures = ttk.Frame(self.the_root, padding=3) #, style='captures.TFrame')
         self.captures.configure(width=550, height=90)
         self.captures.grid_propagate(False)
@@ -152,16 +150,12 @@ class Functions:
                     self.image.grid(column=self.column_to_show, row=self.row_to_show)
                     self.column_to_show += 1
                     self.label_list.append(self.image)
-                    # self.captured_images.photo = self.photo
                     if self.column_to_show > 2:
                         self.row_to_show += 1
                         self.column_to_show = 0
-                        self.write_to_log("row:" + str(self.row_to_show))
                     if self.row_to_show > 2:
                         self.row_to_show = 0
                         self.column_to_show = 0
-                        # self.photo_list.clear()
-                        # self.label_list.clear()
                     self.pin_captured += 1
         except Exception as e:
             self.write_to_log(f"Error: {e}")
