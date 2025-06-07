@@ -87,7 +87,7 @@ class VITracerGUI(Functions):
 
         # Menu IC Profile
         menu_ic_profile.add_command(label='Capture IC traces', command=self.make_profile)
-        menu_ic_profile.add_command(label='Open pin comparisons')
+        menu_ic_profile.add_command(label='Open pin comparisons', command=self.compare_tracing)
         menu_ic_profile.add_separator()
         menu_ic_profile.add_command(label='Close IC traces/comparisons', command=self.close_profile)
 
@@ -174,12 +174,12 @@ class VITracerGUI(Functions):
     def about_window(self):
         about = Toplevel(self.the_root)
         about.resizable(False, False)
-        about.title("About this program")
-        about.geometry("500x100")
+        about.title("About...")
+        about.geometry("200x100")
         about.tk.call('wm', 'iconphoto', about._w, self.icon)
         about.rowconfigure(0, weight=1)
         about.columnconfigure(0, weight=1)
-        Label(about, text="Mi programita version 0.1", pady=20).grid(column=0, row=0)
+        Label(about, text="Mi programita version 0.9", pady=20).grid(column=0, row=0)
         ttk.Button(about, text="OK", command=about.destroy).grid(column=0, row=2, pady=8, padx=8, sticky=E)
 
 # --------------------------------------------------------------------------------------------------------------------

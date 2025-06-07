@@ -9,6 +9,7 @@ from tkinter import ttk
 class Functions:
 
     def __init__(self):
+        self.trace_compared = None
         self.button_new_ic = None
         self.captured_images = None
         self.new_folder_tree = None
@@ -101,67 +102,79 @@ class Functions:
         self.log['state'] = 'disabled'
 
     def make_profile(self):
-        self.captures = ttk.Frame(self.the_root, padding=3) #, style='captures.TFrame')
-        self.captures.configure(width=550, height=90)
-        self.captures.grid_propagate(False)
-        self.captures.grid(column=2, row=2, padx=5, pady=2, sticky=N, rowspan=2)
-        
-        self.captured_images = ttk.Frame(self.the_root, borderwidth=5, relief="solid", padding=3)
-        self.captured_images.configure(width=550, height=450)
-        self.captured_images.grid_propagate(False)
-        self.captured_images.grid(column=2, row=0, padx=5, pady=2, columnspan=4, sticky=N)
-        
-        ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2)
-        self.entry_board_name = ttk.Entry(self.captures, width=15, textvariable=self.board_name)
-        self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3)
-        ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=0, pady=2, padx=2)
-        self.entry_ic_label = ttk.Entry(self.captures, width=5, textvariable=self.ic_label)
-        self.entry_ic_label.grid(column=5, row=0, pady=2, padx=2)
-        ttk.Button(self.captures, text="Creating tree", command=lambda: self.create_tree()).grid(column=6, row=0,
-                                                                                                 padx=1, sticky=W)
-        self.entry_board_name.focus()
+        if self.trace_compared is not None:
+            messagebox.showwarning("Already open", message="The pin comparison is open, please close it first")
+        else:
+            self.captures = ttk.Frame(self.the_root, padding=3)
+            self.captures.configure(width=550, height=90)
+            self.captures.grid_propagate(False)
+            self.captures.grid(column=2, row=2, padx=5, pady=2, sticky=N, rowspan=2)
+
+            self.captured_images = ttk.Frame(self.the_root, borderwidth=1, relief="solid", padding=3)
+            self.captured_images.configure(width=550, height=450)
+            self.captured_images.grid_propagate(False)
+            self.captured_images.grid(column=2, row=0, padx=5, pady=2, columnspan=4, sticky=N)
+
+            ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2, sticky=W)
+            self.entry_board_name = ttk.Entry(self.captures, width=15, textvariable=self.board_name)
+            self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3, sticky=W)
+            ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=0, pady=2, padx=2, sticky=W)
+            self.entry_ic_label = ttk.Entry(self.captures, width=5, textvariable=self.ic_label)
+            self.entry_ic_label.grid(column=5, row=0, pady=2, padx=2, sticky=W)
+            ttk.Button(self.captures, text="Creating tree", command=lambda: self.create_tree()).grid(column=6, row=0,
+                                                                                                     padx=1, sticky=W)
+            self.entry_board_name.focus()
 
     def capture_trace(self, plt):
-        try:
-            self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
-            os.makedirs(self.new_folder_path, exist_ok=True)
-            if self.new_ic:
-                self.pin_captured = 1
-                self.show_pin_captured.set(self.pin_captured - 1)
-                self.new_ic = False
+        if self.captures is not None and self.captured_images is not None:
+            try:
+                self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
+                os.makedirs(self.new_folder_path, exist_ok=True)
+                if self.new_ic:
+                    self.pin_captured = 1
+                    self.show_pin_captured.set(self.pin_captured - 1)
+                    self.new_ic = False
 
-            if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
-                messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
-            else:
-                if self.pin_captured > self.pin_numbers.get():
-                    messagebox.showwarning("Already done...", message="No more pins for this IC")
-                    self.entry_ic_label.focus()
-                    self.button_new_ic.config(state="enabled")
+                if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
+                    messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
                 else:
-                    plt.savefig(self.new_folder_path + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
-                                + "pin" + str(self.pin_captured) + ".png")
+                    if self.pin_captured > self.pin_numbers.get():
+                        messagebox.showwarning("Already done...", message="No more pins for this IC")
+                        self.entry_ic_label.focus()
+                        self.button_new_ic.config(state="enabled")
+                    else:
+                        plt.savefig(self.new_folder_path + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
+                                    + "pin" + str(self.pin_captured) + ".png")
 
-                    self.entry_pin_numbers.config(state="disabled")
-                    self.entry_ic_name.config(state="disabled")
-                    self.show_pin_captured.set(self.pin_captured)
-                    self.photo = PhotoImage(file=(self.new_folder_path + "/" + self.ic_name.get() + "_"
-                                                  +  self.ic_label.get() + "_" + "pin" + str(self.pin_captured)
-                                                  + ".png"), master=self.captures).subsample(3, 3)
-                    self.photo_list.append(self.photo)
+                        self.entry_pin_numbers.config(state="disabled")
+                        self.entry_ic_name.config(state="disabled")
+                        self.show_pin_captured.set(self.pin_captured)
+                        self.photo = PhotoImage(file=(self.new_folder_path + "/" + self.ic_name.get() + "_"
+                                                      +  self.ic_label.get() + "_" + "pin" + str(self.pin_captured)
+                                                      + ".png"), master=self.captures).subsample(3, 3)
+                        self.photo_list.append(self.photo)
 
-                    self.image = Label(self.captured_images, image=self.photo)
-                    self.image.grid(column=self.column_to_show, row=self.row_to_show)
-                    self.column_to_show += 1
-                    self.label_list.append(self.image)
-                    if self.column_to_show > 2:
-                        self.row_to_show += 1
-                        self.column_to_show = 0
-                    if self.row_to_show > 2:
-                        self.row_to_show = 0
-                        self.column_to_show = 0
-                    self.pin_captured += 1
-        except Exception as e:
-            self.write_to_log(f"Error: {e}")
+                        self.image = Label(self.captured_images, image=self.photo)
+                        self.image.grid(column=self.column_to_show, row=self.row_to_show)
+                        self.column_to_show += 1
+                        self.label_list.append(self.image)
+                        if self.column_to_show > 2:
+                            self.row_to_show += 1
+                            self.column_to_show = 0
+                        if self.row_to_show > 2:
+                            self.row_to_show = 0
+                            self.column_to_show = 0
+                        self.pin_captured += 1
+            except Exception as e:
+                self.write_to_log(f"Error: {e}")
+        elif self.trace_compared is not None:
+            plt.savefig("comparing.png")
+            self.photo = PhotoImage(file="comparing.png", master=self.trace_compared)
+            self.image = Label(self.trace_compared, image=self.photo)
+            self.image.grid(column=0, row=0)
+            self.trace_compared.photo = self.photo
+
+
 
     def create_tree(self):
         if self.already_created:
@@ -205,5 +218,21 @@ class Functions:
         self.new_ic = True
         self.button_new_ic.config(state="disabled")
 
+    def compare_tracing(self):
+        if self.captures is not None and self.captured_images is not None:
+            messagebox.showwarning("Already open", message="The capture IC traces is open, please close it first")
+        else:
+            self.trace_compared = ttk.Frame(self.the_root, borderwidth=1, relief="solid", padding=3)
+            self.trace_compared.configure(width=550, height=450)
+            self.trace_compared.grid_propagate(False)
+            self.trace_compared.grid(column=2, row=0, padx=5, pady=10, columnspan=4, sticky=N)
+    
     def close_profile(self):
-        pass
+        if self.captures is not None and self.captured_images is not None:
+            self.captures.destroy()
+            self.captured_images.destroy()
+            self.captures = None
+            self.captured_images = None
+        if self.trace_compared is not None:
+            self.trace_compared.destroy()
+            self.trace_compared = None
