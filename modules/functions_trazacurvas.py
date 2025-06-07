@@ -9,6 +9,7 @@ from tkinter import ttk
 class Functions:
 
     def __init__(self):
+        self.captured_images = None
         self.new_folder_tree = None
         self.new_folder_path = None
         self.already_created = False
@@ -21,6 +22,10 @@ class Functions:
         self.log = None
         self.pin_numbers = IntVar(value=1)
         self.pin_captured = 1
+        self.row_to_show = 0
+        self.column_to_show = 0
+        self.photo_list = []  # Armazena referências dos PhotoImages
+        self.label_list = []  # Armazena os Label(s) que exibem as imagens
         self.show_pin_captured = IntVar(value=0)
         self.ic_name = StringVar()
         self.ic_label = StringVar()
@@ -95,12 +100,18 @@ class Functions:
         self.log['state'] = 'disabled'
 
     def make_profile(self):
-        s = ttk.Style()
-        s.configure('captures.TFrame', background='white')
-        self.captures = ttk.Frame(self.the_root, padding=3, style='captures.TFrame')
-        self.captures.configure(width=550, height=500)
+        # s = ttk.Style()
+        # s.configure('captures.TFrame', background='white')
+        self.captures = ttk.Frame(self.the_root, padding=3) #, style='captures.TFrame')
+        self.captures.configure(width=550, height=90)
         self.captures.grid_propagate(False)
-        self.captures.grid(column=2, row=0, padx=20, pady=20, sticky=N)
+        self.captures.grid(column=2, row=2, padx=5, pady=2, sticky=N, rowspan=2)
+        
+        self.captured_images = ttk.Frame(self.the_root, borderwidth=5, relief="solid", padding=3)
+        self.captured_images.configure(width=550, height=450)
+        self.captured_images.grid_propagate(False)
+        self.captured_images.grid(column=2, row=0, padx=5, pady=2, columnspan=4, sticky=N)
+        
         ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2)
         self.entry_board_name = ttk.Entry(self.captures, width=35, textvariable=self.board_name)
         self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3)
@@ -111,26 +122,49 @@ class Functions:
                                                                                                  padx=1, sticky=W)
 
     def capture_trace(self, plt):
-        self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
-        os.makedirs(self.new_folder_path, exist_ok=True)
-        if self.new_ic:
-            self.pin_captured = 1
-            self.show_pin_captured.set(self.pin_captured - 1)
-            self.new_ic = False
-
-        if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
-            messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
-        else:
-            if self.pin_captured > self.pin_numbers.get():
-                messagebox.showwarning("Already done...", message="No more pins for this IC")
-                self.entry_ic_label.focus()
-            else:
-                plt.savefig(self.new_folder_path + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
-                            + "pin" + str(self.pin_captured) + ".png")
-                self.entry_pin_numbers.config(state="disabled")
-                self.entry_ic_name.config(state="disabled")
-                self.pin_captured += 1
+        try:
+            self.new_folder_path = os.path.join(self.new_folder_tree, self.ic_label.get())
+            os.makedirs(self.new_folder_path, exist_ok=True)
+            if self.new_ic:
+                self.pin_captured = 1
                 self.show_pin_captured.set(self.pin_captured - 1)
+                self.new_ic = False
+
+            if self.ic_label.get() == "" or self.ic_name.get() == "" or self.board_name.get() == "":
+                messagebox.showwarning("Missing...", message="Please, fill all the missing fields")
+            else:
+                if self.pin_captured > self.pin_numbers.get():
+                    messagebox.showwarning("Already done...", message="No more pins for this IC")
+                    self.entry_ic_label.focus()
+                else:
+                    plt.savefig(self.new_folder_path + "/" + self.ic_name.get() + "_" +  self.ic_label.get() + "_"
+                                + "pin" + str(self.pin_captured) + ".png")
+
+                    self.entry_pin_numbers.config(state="disabled")
+                    self.entry_ic_name.config(state="disabled")
+                    self.show_pin_captured.set(self.pin_captured - 1)
+                    self.photo = PhotoImage(file=(self.new_folder_path + "/" + self.ic_name.get() + "_"
+                                                  +  self.ic_label.get() + "_" + "pin" + str(self.pin_captured)
+                                                  + ".png"), master=self.captures).subsample(3, 3)
+                    self.photo_list.append(self.photo)
+
+                    self.image = Label(self.captured_images, image=self.photo)
+                    self.image.grid(column=self.column_to_show, row=self.row_to_show)
+                    self.column_to_show += 1
+                    self.label_list.append(self.image)
+                    # self.captured_images.photo = self.photo
+                    if self.column_to_show > 2:
+                        self.row_to_show += 1
+                        self.column_to_show = 0
+                        self.write_to_log("row:" + str(self.row_to_show))
+                    if self.row_to_show > 2:
+                        self.row_to_show = 0
+                        self.column_to_show = 0
+                        # self.photo_list.clear()
+                        # self.label_list.clear()
+                    self.pin_captured += 1
+        except Exception as e:
+            self.write_to_log(f"Error: {e}")
 
     def create_tree(self):
         if self.already_created:

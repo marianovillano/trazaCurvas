@@ -60,14 +60,14 @@ class VITracerGUI(Functions):
         self.scope_is_run = False
 
         # Creating frames inside main window
-        self.tracer = ttk.Frame(root, padding=3)
-        self.indicators = ttk.Frame(root, padding=10)
-        self.selectors = ttk.Frame(root, padding=3)
-        self.serial_communication = ttk.Frame(root, padding=3)
-        self.tracer.grid(column=0, row=0)
-        self.indicators.grid(column=1, row=0, sticky=N)
-        self.selectors.grid(column=0, row=1, sticky=W)
-        self.serial_communication.grid(column=0, row=2, sticky=W)
+        self.tracer = ttk.Frame(self.the_root, padding=3)
+        self.indicators = ttk.Frame(self.the_root, padding=3)
+        self.selectors = ttk.Frame(self.the_root, padding=3)
+        self.serial_communication = ttk.Frame(self.the_root, padding=3)
+        self.tracer.grid(column=0, row=0, rowspan=2, sticky=W)
+        self.indicators.grid(column=1, row=0, sticky=N, rowspan=2)
+        self.selectors.grid(column=0, row=2, sticky=W)
+        self.serial_communication.grid(column=0, row=3, sticky=W)
 
         self.populate_menu()
         self.populate_controls()
@@ -149,12 +149,6 @@ class VITracerGUI(Functions):
         ttk.Radiobutton(self.selectors, text="1.5kR", variable=self.impedance, value="1.5kR",
                         command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=4, row=2)
 
-        # Capture button
-        bt_capture = (ttk.Button(self.selectors, text="Capture trace",
-                   command=lambda: self.capture_trace(plt)))
-        bt_capture.grid(column=10, row=1, padx=1, sticky=E)
-        bt_capture.focus_set()
-
     def populate_indicators(self):
         # Indicators framing
         font_size = 20
@@ -167,12 +161,14 @@ class VITracerGUI(Functions):
         ttk.Label(self.indicators, text="Impedance").grid(column=0, row=4, padx=1)
         ttk.Label(self.indicators, textvariable=self.impedance, font=("", font_size),
                   foreground="red").grid(column=0, row=5, padx=1)
-        ttk.Button(self.indicators, text="Show captures",
-                   command=lambda: self.open_captures()).grid(column=0, row=6, padx=1, sticky=W)
+
+        # Capturing button
+        ttk.Button(self.indicators, text="Capture trace",
+                   command=lambda: self.capture_trace(plt)).grid(column=0, row=6, padx=1, sticky=W)
 
         # Event monitoring
         ttk.Label(self.serial_communication, text="Events monitor:").grid(column=0, row=0, padx=1, sticky=W)
-        self.log = Text(self.serial_communication, state="disabled", width=82, height=5, wrap="word", bg="light gray")
+        self.log = Text(self.serial_communication, state="disabled", width=70, height=5, wrap="word", bg="light gray")
         self.log.grid(column=0, row=1, padx=5, pady=5, sticky=W)
 
     def about_window(self):
@@ -185,22 +181,6 @@ class VITracerGUI(Functions):
         about.columnconfigure(0, weight=1)
         Label(about, text="Mi programita version 0.1", pady=20).grid(column=0, row=0)
         ttk.Button(about, text="OK", command=about.destroy).grid(column=0, row=2, pady=8, padx=8, sticky=E)
-
-    def open_captures(self):
-        captures_window = Toplevel(self.the_root)
-        captures_window.title("V-I traces captured")
-        figs = ttk.Frame(captures_window, padding=3)
-        try:
-            photo = PhotoImage(file=(os.path.abspath("image.png")), master=captures_window)
-            photo2 = PhotoImage(file=(os.path.abspath("image2.png")), master=captures_window)
-            image = Label(captures_window, image=photo)
-            image.grid(column=0, row=0)
-            image2 = Label(captures_window, image=photo2)
-            image2.grid(column=1, row=0)
-            captures_window.photo = photo
-            captures_window.photo2 = photo2
-        except Exception as e:
-            self.write_to_log(f"Error loading image: {e}")
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -268,17 +248,19 @@ class VITracerGUI(Functions):
 
     def populate_plotter(self):
         # Create a figure and axis
-        self.fig, ax = plt.subplots()
+        self.fig, ax = plt.subplots(figsize=(5, 4))
         ax.set_xlim(-5, 5)
         ax.set_ylim(-5, 5)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         self.line, = ax.plot([], [], lw=1)  # Empty plot to update
+        self.fig.tight_layout(pad=0)
+        ax.set_position((0.05, 0.05, 0.92, 0.92))
         # The signal
         if self.canvas is not None:
             self.canvas.get_tk_widget().destroy()
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.tracer)
-        self.canvas.get_tk_widget().pack()
+        self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
     def animate_plot(self):
         # Create animation
