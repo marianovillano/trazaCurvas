@@ -58,6 +58,7 @@ class VITracerGUI(Functions):
         self.connection_active = False
         self.monitoring_serial = False
         self.scope_is_run = False
+        self.received_command = False
 
         # Creating frames inside main window
         self.tracer = ttk.Frame(self.the_root, padding=3)
@@ -354,15 +355,35 @@ class VITracerGUI(Functions):
                 if self.uart.inWaiting() > 0:
                     answer = self.uart.read_until()
                     self.decoded_answer = answer.decode("utf-8").replace("\r\n", "")
+                    self.received_command = True
                     if self.decoded_answer[0] == "F":
                         self.frequency.set(self.frequency_dict[self.decoded_answer])
+                        if self.use_scope.get() is True:
+                            if self.frequency.get() == "5Hz":
+                                self.scope.set_sample_rate(102)
+                            elif self.frequency.get() == "20Hz":
+                                self.scope.set_sample_rate(106)
+                            elif self.frequency.get() == "50Hz" or self.frequency.get() == "60Hz":
+                                self.scope.set_sample_rate(110)
+                            elif self.frequency.get() == "200Hz":
+                                self.scope.set_sample_rate(150)
+                            else:
+                                self.scope.set_sample_rate(1)
                     elif self.decoded_answer[0] == "V":
                         self.voltage.set(self.voltage_dict[self.decoded_answer])
+                        if self.use_scope.get() is True:
+                            if self.voltage.get() == "200mV":
+                                self.scope.set_ch1_voltage_range(10)
+                                self.scope.set_ch2_voltage_range(10)
+                            else:
+                                self.scope.set_ch1_voltage_range(1)
+                                self.scope.set_ch2_voltage_range(1)
                     elif self.decoded_answer[0] == "R":
                         self.impedance.set(self.impedance_dict[self.decoded_answer])
                     elif self.decoded_answer[0] == "c":
                         self.capture_trace(plt)
                     self.write_to_log("Receiving: " + self.decoded_answer)
+                    self.received_command = False
             except Exception as e:
                 self.write_to_log(repr(e))
                 break
