@@ -58,7 +58,6 @@ class VITracerGUI(Functions):
         self.connection_active = False
         self.monitoring_serial = False
         self.scope_is_run = False
-        self.received_command = False
 
         # Creating frames inside main window
         self.tracer = ttk.Frame(self.the_root, padding=3)

@@ -117,12 +117,11 @@ class Functions:
 
             ttk.Label(self.captures, text="Board name: ").grid(column=0, row=0, pady=2, padx=2, sticky=W)
             self.entry_board_name = ttk.Entry(self.captures, width=15, textvariable=self.board_name)
-            self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=3, sticky=W)
-            ttk.Label(self.captures, text="IC label (U...): ").grid(column=4, row=0, pady=2, padx=2, sticky=W)
+            self.entry_board_name.grid(column=1, row=0, pady=2, padx=2, columnspan=2, sticky=W)
+            ttk.Label(self.captures, text="IC label (U...): ").grid(column=3, row=0, pady=2, padx=2, sticky=W)
             self.entry_ic_label = ttk.Entry(self.captures, width=5, textvariable=self.ic_label)
-            self.entry_ic_label.grid(column=5, row=0, pady=2, padx=2, sticky=W)
-            ttk.Button(self.captures, text="Creating tree", command=lambda: self.create_tree()).grid(column=6, row=0,
-                                                                                                     padx=1, sticky=W)
+            self.entry_ic_label.grid(column=4, row=0, pady=2, padx=2, sticky=W)
+            ttk.Button(self.captures, text="Creating tree", command=lambda: self.create_tree()).grid(column=5, row=0, padx=1, columnspan=2, sticky=W)
             self.entry_board_name.focus()
 
     def capture_trace(self, plt):
@@ -195,12 +194,12 @@ class Functions:
             self.entry_pin_numbers.grid(column=1, row=1, pady=2, padx=2)
             ttk.Label(self.captures, text="IC name: ").grid(column=2, row=1, pady=2, padx=2)
             self.entry_ic_name = ttk.Entry(self.captures, width=25, textvariable=self.ic_name)
-            self.entry_ic_name.grid(column=3, row=1, pady=2, padx=2)
+            self.entry_ic_name.grid(column=3, row=1, pady=2, padx=2, columnspan=3)
             self.button_new_ic = ttk.Button(self.captures, text="New IC...", command=lambda: self.add_new_ic())
-            self.button_new_ic.grid(column=4, row=1, padx=1, sticky=W)
+            self.button_new_ic.grid(column=6, row=1, padx=1, sticky=W)
             self.button_new_ic.config(state="disabled")
-            ttk.Label(self.captures, text="Nº of pins captured: ").grid(column=0, row=2, pady=2, padx=2, columnspan=2)
-            ttk.Label(self.captures, textvariable=self.show_pin_captured).grid(column=2, row=2, pady=2, padx=2)
+            ttk.Label(self.captures, text="Nº of pins captured: ").grid(column=0, row=2, pady=2, padx=2, columnspan=2, sticky=W)
+            ttk.Label(self.captures, textvariable=self.show_pin_captured).grid(column=2, row=2, pady=2, padx=2, columnspan=5, sticky=W)
         else:
             self.write_to_log("Folder not selected")
 
