@@ -103,29 +103,21 @@ class VITracerGUI(Functions):
         # Frequency selection
         ttk.Label(self.selectors, text="Frequencies: ", style="TLabel").grid(column=0, row=0)
         ttk.Radiobutton(self.selectors, text="5Hz", variable=self.frequency, value="5Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=1, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=1, row=0)
         ttk.Radiobutton(self.selectors, text="20Hz", variable=self.frequency, value="20Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=2, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=2, row=0)
         ttk.Radiobutton(self.selectors, text="50Hz", variable=self.frequency, value="50Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=3, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=3, row=0)
         ttk.Radiobutton(self.selectors, text="60Hz", variable=self.frequency, value="60Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=4, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=4, row=0)
         ttk.Radiobutton(self.selectors, text="200Hz", variable=self.frequency, value="200Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=5, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=5, row=0)
         ttk.Radiobutton(self.selectors, text="500Hz", variable=self.frequency, value="500Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=6, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=6, row=0)
         ttk.Radiobutton(self.selectors, text="2kHz", variable=self.frequency, value="2kHz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=7, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=7, row=0)
         ttk.Radiobutton(self.selectors, text="5kHz", variable=self.frequency, value="5kHz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart,
-                                                       self.scope)).grid(column=8, row=0)
+                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=8, row=0)
 
         # Voltage selection
         ttk.Label(self.selectors, text="Voltages: ").grid(column=0, row=1)
@@ -153,14 +145,11 @@ class VITracerGUI(Functions):
         # Indicators framing
         font_size = 20
         ttk.Label(self.indicators, text="Frequency").grid(column=0, row=0, padx=1)
-        ttk.Label(self.indicators, textvariable=self.frequency, font=("", font_size),
-                  foreground="green").grid(column=0, row=1, padx=1)
+        ttk.Label(self.indicators, textvariable=self.frequency, font=("", font_size), foreground="green").grid(column=0, row=1, padx=1)
         ttk.Label(self.indicators, text="Voltage").grid(column=0, row=2, padx=1)
-        ttk.Label(self.indicators, textvariable=self.voltage, font=("", font_size),
-                  foreground="blue").grid(column=0, row=3, padx=1)
+        ttk.Label(self.indicators, textvariable=self.voltage, font=("", font_size), foreground="blue").grid(column=0, row=3, padx=1)
         ttk.Label(self.indicators, text="Impedance").grid(column=0, row=4, padx=1)
-        ttk.Label(self.indicators, textvariable=self.impedance, font=("", font_size),
-                  foreground="red").grid(column=0, row=5, padx=1)
+        ttk.Label(self.indicators, textvariable=self.impedance, font=("", font_size), foreground="red").grid(column=0, row=5, padx=1)
 
         # Capturing button
         ttk.Button(self.indicators, text="Capture trace",
@@ -322,7 +311,7 @@ class VITracerGUI(Functions):
         except Exception as e:
             self.write_to_log(repr(e))
         time.sleep(1)
-        if self.use_scope.get() is True:
+        if self.use_scope.get():
             self.starting_scope()
             if self.scope_is_run:
                 self.populate_plotter()
@@ -342,7 +331,7 @@ class VITracerGUI(Functions):
             self.write_to_log("Nothing to disconnect")
         if self.scope is not None:
             self.scope_is_run = False
-            if self.use_scope.get() is True:
+            if self.use_scope.get():
                 self.scope.stop_capture()
                 time.sleep(0.5)
                 self.scope.close_handle()
@@ -357,7 +346,7 @@ class VITracerGUI(Functions):
                     self.received_command = True
                     if self.decoded_answer[0] == "F":
                         self.frequency.set(self.frequency_dict[self.decoded_answer])
-                        if self.use_scope.get() is True:
+                        if self.use_scope.get():
                             if self.frequency.get() == "5Hz":
                                 self.scope.set_sample_rate(102)
                             elif self.frequency.get() == "20Hz":
@@ -370,7 +359,7 @@ class VITracerGUI(Functions):
                                 self.scope.set_sample_rate(1)
                     elif self.decoded_answer[0] == "V":
                         self.voltage.set(self.voltage_dict[self.decoded_answer])
-                        if self.use_scope.get() is True:
+                        if self.use_scope.get():
                             if self.voltage.get() == "200mV":
                                 self.scope.set_ch1_voltage_range(10)
                                 self.scope.set_ch2_voltage_range(10)
@@ -394,8 +383,8 @@ class VITracerGUI(Functions):
             self.connection_active = False
             self.uart.close()
             time.sleep(0.1)
-        if self.use_scope.get() is True:
-            if self.scope_is_run is True:
+        if self.use_scope.get():
+            if self.scope_is_run:
                 self.scope_is_run = False
                 time.sleep(0.1)
                 self.scope.stop_capture()
