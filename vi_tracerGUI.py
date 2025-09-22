@@ -173,6 +173,9 @@ class VITracerGUI(Functions):
 
     def about_window(self):
         about = Toplevel(self.the_root)
+        about.transient(self.the_root)
+        about.grab_set()
+        about.focus_set()
         about.resizable(False, False)
         about.title("About...")
         about.geometry("200x100")
@@ -270,8 +273,11 @@ class VITracerGUI(Functions):
         plt.xticks([n for n in range(-5, 5)])
 
     def connecting_window(self):
-        self.setup_uart = Toplevel()
+        self.setup_uart = Toplevel(self.the_root)
         self.setup_uart.resizable(False, False)
+        self.setup_uart.transient(self.the_root)
+        self.setup_uart.grab_set()
+        self.setup_uart.focus_set()
         self.setup_uart.title("Configure serial communication")
         self.icon = PhotoImage(file='scope.gif')
         self.setup_uart.tk.call('wm', 'iconphoto', self.setup_uart._w, self.icon)
