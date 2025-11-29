@@ -173,8 +173,6 @@ class Functions:
             self.image.grid(column=0, row=0)
             self.trace_compared.photo = self.photo
 
-
-
     def create_tree(self):
         if self.already_created:
             self.entry_ic_name.config(state="enabled")
