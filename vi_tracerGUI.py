@@ -6,11 +6,13 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PyHT6022.LibUsbScope import Oscilloscope
+from threading import Thread
+import threading
+import numpy as np
 import sys
 import os
 import serial
 import serial.tools.list_ports
-from threading import Thread
 
 from modules.functions_trazacurvas import Functions
 
@@ -19,6 +21,7 @@ class VITracerGUI(Functions):
     created. The class calls the methods automatically and is not intended to run methods separately"""
     def __init__(self, the_root):
         Functions.__init__(self)
+        self.scatter = None
         self.check = None
         self.canvas = None
         self.connect_button = None
@@ -37,10 +40,11 @@ class VITracerGUI(Functions):
         self.use_scope = BooleanVar(value=False)
         self.y_signal_past = []
         self.x_signal_past = []
-        self.x_signal = []
-        self.y_signal = []
-        self.buffer_size_x = 3072
-        self.buffer_size_y = 3072
+        self.scope_lock = threading.Lock()
+        self.x_signal = None
+        self.y_signal = None
+        self.buffer_size_x = 0
+        self.buffer_size_y = 0
         self.the_root = the_root
         self.the_root.option_add('*tearOff', FALSE)
         self.the_root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -49,7 +53,6 @@ class VITracerGUI(Functions):
         self.the_root.title("V-I curve tracer")
         self.icon = PhotoImage(file='scope.gif')
         self.the_root.tk.call('wm', 'iconphoto', self.the_root._w, self.icon)
-        # self.window_size = 9 # TODO: check that it could be an old attribute not used anymore
         self.frequency = StringVar()
         self.frequency.set("5Hz")
         self.voltage = StringVar()
@@ -203,56 +206,46 @@ class VITracerGUI(Functions):
 
             # Initializing the thread to measure data
             self.scope_is_run = True
-            self.scope_thread = Thread(target=self.get_data)
+            self.scope_thread = Thread(target=self.get_data, daemon=True)
             self.scope_thread.start()
         else:
             self.write_to_log("Oscilloscope not detected")
 
     def get_data(self):
         """Method that captures and sends two lists representing the two channels of the Hantek oscilloscope"""
+        self.scope.start_capture()
+        self.scope.read_data(data_size=0xC00, raw=True)  # Discard the first block of data
+
         while self.scope_is_run:
-            self.scope.start_capture()     # API method to start the data capture
-            adc_signals = self.scope.read_data(data_size=0xC00, raw=False) # The scope returns a list of two lists (V/I)
-            # Separating the lists in two buffers, V and I, and determinate its sizes
-            self.buffer_size_x = len(adc_signals[0])
-            self.buffer_size_y = len(adc_signals[1])
-            # transforming the collected data in float values
-            self.x_signal = self.scope.scale_read_data(adc_signals[0])
-            self.y_signal = self.scope.scale_read_data(adc_signals[1])
-            # Recovery buffers to allow the program still capturing when a USB communication problem is happened, due
-            # to capturing data smaller than the data size 0xC00 (3072)
-            if len(self.x_signal) == 3072:
-                self.x_signal_past = self.x_signal
-            if len(self.y_signal) == 3072:
-                self.y_signal_past = self.y_signal
+            # The scope returns a list of two bytearrays (V/I)
+            raw_ch1, raw_ch2 = self.scope.read_data(data_size=0xC00, raw=True)
+
+            if len(raw_ch1) != 0xC00 or len(raw_ch2) != 0xC00:
+                continue
+
+            ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
+            ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
+
+            with self.scope_lock:
+                self.x_signal = ch1
+                self.y_signal = ch2
 
     def init(self):
         """Initialization  of the animated plot function"""
-        self.line.set_data([], [])
-        return self.line,
+        self.scatter.set_offsets(np.empty((0, 2)))
+        return self.scatter,
 
     def update(self, frame):
         """Method called to show a frame in the animated plot"""
-        plot_x_signal = []
-        plot_y_signal = []
-        try:
-            # Assigning in the axis graphics the data to show: x represents voltage and y represents current
-            plot_x_signal = [self.x_signal[frame] for frame in range(self.buffer_size_x)]
-            plot_y_signal = [self.y_signal[frame] for frame in range(self.buffer_size_y)]
+        with self.scope_lock:
+            x = self.x_signal
+            y = self.y_signal
 
-            self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
-            return self.line,
-        # Sometimes, the buffer couldn't be captured with the correct size, then the IndexError exception is captured
-        except IndexError as e:
-            self.write_to_log(repr(e))
-            # Plotting the recovery buffers to allow the program still running
-            if len(self.x_signal_past) == 3072:
-                plot_x_signal = [self.x_signal_past[frame] for frame in range(self.buffer_size_x)]
-            if len(self.y_signal_past) == 3072:
-                plot_y_signal = [self.y_signal_past[frame] for frame in range(self.buffer_size_y)]
+        if not x or not y:
+            return self.scatter,
 
-            self.line.set_data(plot_x_signal, plot_y_signal)  # Update the plot with the new data
-            return self.line,
+        self.scatter.set_offsets(np.column_stack((x, y)))
+        return self.scatter,
 
     def populate_plotter(self):
         """Method to populate the frame representing the animated plotter"""
@@ -262,7 +255,10 @@ class VITracerGUI(Functions):
         ax.set_ylim(-5, 5)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        self.line, = ax.plot([], [], lw=1)  # Empty plot to update
+        ax.grid(True)
+        ax.set_xticks([n for n in range(-5, 6)])
+        ax.set_yticks([n for n in range(-5, 6)])
+        self.scatter = ax.scatter([], [], s=1)  # Empty plot to update
         self.fig.tight_layout(pad=0)
         ax.set_position((0.05, 0.05, 0.92, 0.92))
         # The signal to plot
@@ -273,11 +269,40 @@ class VITracerGUI(Functions):
 
     def animate_plot(self):
         # Create animation
-        self.ani = FuncAnimation(self.fig, self.update, frames=100, init_func=self.init, blit=True, interval=0.01)
-        plt.grid()
-        # Creating lines representing the maximum and minimum captured voltages that represents V and I +/- 5V
-        plt.yticks([n for n in range(-5, 5)])
-        plt.xticks([n for n in range(-5, 5)])
+        self.ani = FuncAnimation(self.fig, self.update, init_func=self.init, blit=True, interval=20,
+                                 cache_frame_data=False)
+
+    def connecting_device(self):
+        """Method to establish the connection with the curve tracer, gets port and speed data from the connection
+        window and starts the connection, and the capturing signals from the oscilloscope if configured (default yes)
+        """
+        port = self.port_combobox.get()
+        baud = int(self.baud_combobox.get())
+        try:
+            self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
+            self.connection_active = True
+            # The uart rx is received in a method opened in a different thread
+            self.thread_uart = Thread(target=self.read_from_port)
+            self.thread_uart.daemon = True
+            self.thread_uart.start()
+            self.monitoring_serial = True
+            self.send_command("hello", self.uart) # The command to start the connection in the remote
+            # self.populate_plotter()
+        except Exception as e:
+            self.write_to_log(repr(e))
+        time.sleep(1)
+        # If the oscilloscope is wanted to be activated, starts the capture
+        if self.use_scope.get():
+            self.starting_scope()
+            if self.scope_is_run:
+                # Once the oscilloscope capturing process is running, the plotting is initialized in a new thread
+                self.populate_plotter()
+                self.animate_plot()
+                # self.thread_animation = Thread(target=self.animate_plot)
+                # self.thread_animation.start()
+        time.sleep(0.5)
+        # Closes the communication window
+        self.setup_uart.destroy()
 
     def connecting_window(self):
         """Method called from the menu to open a window with the data needed to start the uart communication with the
@@ -321,44 +346,13 @@ class VITracerGUI(Functions):
         self.connect_button.grid(row=4, column=1, padx=90, pady=30)
 
     def callback(self, event):
-        """Internal method to repopulate the comport list if any is connected after the connection window is opened,
-        also enables the connection widget button"""
+        """Internal method to repopulate the comport list if any device is connected after the connection window is
+        opened, also enables the connection widget button"""
         ports = [port.device for port in serial.tools.list_ports.comports()]
         if len(ports) > 0:
             self.port_combobox.set(ports)
             self.port_combobox["values"] = ports
             self.connect_button.config(state=tkinter.NORMAL)
-
-    def connecting_device(self):
-        """Method to establish the connection with the curve tracer, gets port and speed data from the connection
-        window and starts the connection, and the capturing signals from the oscilloscope if configured (default yes)
-        """
-        port = self.port_combobox.get()
-        baud = int(self.baud_combobox.get())
-        try:
-            self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
-            self.connection_active = True
-            # The uart rx is received in a method opened in a different thread
-            self.thread_uart = Thread(target=self.read_from_port)
-            self.thread_uart.daemon = True
-            self.thread_uart.start()
-            self.monitoring_serial = True
-            self.send_command("hello", self.uart) # The command to start the connection in the remote
-            self.populate_plotter()
-        except Exception as e:
-            self.write_to_log(repr(e))
-        time.sleep(1)
-        # If the oscilloscope is wanted to be activated, starts the capture
-        if self.use_scope.get():
-            self.starting_scope()
-            if self.scope_is_run:
-                # Once the oscilloscope capturing process is running, the plotting is initialized in a new thread
-                self.populate_plotter()
-                self.thread_animation = Thread(target=self.animate_plot())
-                self.thread_animation.start()
-        time.sleep(0.5)
-        # Closes the communication window
-        self.setup_uart.destroy()
 
     def disconnecting_device(self):
         """Method called in the menu to disconnect the remote and stop the capturing data and signal plotting"""
@@ -377,7 +371,6 @@ class VITracerGUI(Functions):
                 self.scope.stop_capture()
                 time.sleep(0.5)
                 self.scope.close_handle()
-            self.thread_animation.join()
 
     def read_from_port(self):
         """Method to monitor the receiving data in the uart connection, is run constantly in an independent thread
@@ -441,7 +434,6 @@ class VITracerGUI(Functions):
                 self.scope.stop_capture()
                 time.sleep(0.5)
                 self.scope.close_handle()
-                self.thread_animation.join()
                 self.scope_thread.join()
         self.the_root.quit()
         self.the_root.destroy()
