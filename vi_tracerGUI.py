@@ -1,453 +1,570 @@
-import time
-import tkinter
-from tkinter import *
-from tkinter import ttk
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import sys
 from PyHT6022.LibUsbScope import Oscilloscope
 from threading import Thread
 import threading
-import numpy as np
-import sys
-import os
+
+from PySide6 import QtWidgets, QtCore
+from PySide6.QtCore import Signal, QObject
+import pyqtgraph as pg
+import time
 import serial
 import serial.tools.list_ports
 
-from modules.functions_trazacurvas import Functions
 
-class VITracerGUI(Functions):
-    """Main class to construct all the application, the input parameter is the tkinter root object previously
-    created. The class calls the methods automatically and is not intended to run methods separately"""
-    def __init__(self, the_root):
-        Functions.__init__(self)
-        self.scatter = None
-        self.check = None
-        self.canvas = None
-        self.connect_button = None
-        self.baud_combobox = None
-        self.port_combobox = None
-        self.setup_uart = None
-        self.fig = None
-        self.thread_animation = None
-        self.calibration = None
-        self.scope = None
-        self.decoded_answer = None
-        self.thread_uart = None
-        self.line = None
-        self.ani = None
+# Señales Qt para comunicación thread-safe
+class WorkerSignals(QObject):
+    """Señales para comunicación entre threads y la GUI"""
+    uart_message = Signal(str)
+    scope_message = Signal(str)
+
+
+class CurveTracerWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        # Configuración global de pyqtgraph
+        pg.setConfigOptions(antialias=True)
+
+        # Diccionarios de comandos (copiados de Functions para evitar dependencia de Tkinter)
+        self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7", "5kHz": "8"}
+        self.voltages = {"200mV": "9", "3.3V": "10", "5V": "11", "9V": "12"}
+        self.d_impedance = {"45R": "13", "415R": "14", "726R": "15", "1.5kR": "16"}
+        self.frequency_dict = {"F1": "5Hz", "F2": "20Hz", "F3": "50Hz", "F4": "60Hz", "F5": "200Hz", "F6": "500Hz", "F7": "2kHz", "F8": "5kHz"}
+        self.voltage_dict = {"V9": "200mV", "V10": "3.3V", "V11": "5V", "V12": "9V"}
+        self.impedance_dict = {"R13": "45R", "R14": "415R", "R15": "726R", "R16": "1.5kR"}
+
+        # Inicializar señales para comunicación thread-safe
+        self.signals = WorkerSignals()
+        self.signals.uart_message.connect(lambda msg: self.log_event(msg))
+        self.signals.scope_message.connect(lambda msg: self.log_event(msg))
+
+        # Variables de conexión y hardware
         self.uart = None
-        self.use_scope = BooleanVar(value=False)
-        self.y_signal_past = []
-        self.x_signal_past = []
-        self.scope_lock = threading.Lock()
-        self.x_signal = None
-        self.y_signal = None
-        self.buffer_size_x = 0
-        self.buffer_size_y = 0
-        self.the_root = the_root
-        self.the_root.option_add('*tearOff', FALSE)
-        self.the_root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.the_root.rowconfigure(0, weight=1)
-        self.the_root.columnconfigure(0, weight=1)
-        self.the_root.title("V-I curve tracer")
-        self.icon = PhotoImage(file='scope.gif')
-        self.the_root.tk.call('wm', 'iconphoto', self.the_root._w, self.icon)
-        self.frequency = StringVar()
-        self.frequency.set("5Hz")
-        self.voltage = StringVar()
-        self.voltage.set("200mV")
-        self.impedance = StringVar()
-        self.impedance.set("45R")
+        self.scope = None
+        self.calibration = None
         self.connection_active = False
-        self.monitoring_serial = False
-        self.received_command = None
         self.scope_is_run = False
         self.scope_thread = None
+        self.thread_uart = None
 
-        # Creating frames inside main window
-        self.tracer = ttk.Frame(self.the_root, padding=3)
-        self.indicators = ttk.Frame(self.the_root, padding=3)
-        self.selectors = ttk.Frame(self.the_root, padding=3)
-        self.serial_communication = ttk.Frame(self.the_root, padding=3)
-        self.tracer.grid(column=0, row=0, rowspan=2, sticky=W)
-        self.indicators.grid(column=1, row=0, sticky=N, rowspan=2)
-        self.selectors.grid(column=0, row=2, sticky=W)
-        self.serial_communication.grid(column=0, row=3, sticky=W)
+        # Lock para acceso thread-safe a datos del scope
+        self.scope_lock = threading.Lock()
 
-        # Calling the methods that creates the needed widgets that conforms the app
-        self.populate_menu()
-        self.populate_controls()
-        self.populate_indicators()
-        self.populate_plotter()
+        # Configuración de ventana
+        self.setWindowTitle("Curve Tracer - Qt6")
+        self.resize(900, 600)
 
-    def populate_menu(self):
-        # Menu structure of the app
-        menubar = Menu(root)
-        self.the_root['menu'] = menubar
-        menu_ic_profile = Menu(menubar)
-        menu_device = Menu(menubar)
-        menu_about = Menu(menubar)
-        menubar.add_cascade(menu=menu_ic_profile, label='IC Profile')
-        menubar.add_cascade(menu=menu_device, label='Device')
-        menubar.add_cascade(menu=menu_about, label='About')
+        # Estado de datos
+        self.x_signal = []
+        self.y_signal = []
+        self.x_signal = []
+        self.y_signal = []
+        #self.plot_style = "line" # "line" o "scatter"
 
-        # Menu IC Profile
-        menu_ic_profile.add_command(label='Capture IC traces', command=self.make_profile)
-        menu_ic_profile.add_command(label='Open pin comparisons', command=self.compare_tracing)
-        menu_ic_profile.add_separator()
-        menu_ic_profile.add_command(label='Close IC traces/comparisons', command=self.close_profile)
+        # Variables de configuración
+        self.frequency = "5Hz"
+        self.voltage = "200mV"
+        self.impedance = "45R"
+        # Variables de configuración
+        self.frequency = "5Hz"
+        self.voltage = "200mV"
+        self.impedance = "45R"
+        self.use_scope = True
 
-        # Menu device
-        menu_device.add_command(label='Connect...', command=self.connecting_window)
-        menu_device.add_command(label='Disconnect', command=self.disconnecting_device)
+        # ---- Layout principal ----
+        central = QtWidgets.QWidget()
+        self.setCentralWidget(central)
+        main_layout = QtWidgets.QHBoxLayout(central)
 
-        # Menu About
-        menu_about.add_command(label='About the program', command=lambda: self.about_window())
+        # Área de gráfico
+        self.plot_widget = pg.GraphicsLayoutWidget()
+        main_layout.addWidget(self.plot_widget, 1)
 
-    def populate_controls(self):
-        # Frequency buttons selection
-        ttk.Label(self.selectors, text="Frequencies: ", style="TLabel").grid(column=0, row=0)
-        ttk.Radiobutton(self.selectors, text="5Hz", variable=self.frequency, value="5Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=1, row=0)
-        ttk.Radiobutton(self.selectors, text="20Hz", variable=self.frequency, value="20Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=2, row=0)
-        ttk.Radiobutton(self.selectors, text="50Hz", variable=self.frequency, value="50Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=3, row=0)
-        ttk.Radiobutton(self.selectors, text="60Hz", variable=self.frequency, value="60Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=4, row=0)
-        ttk.Radiobutton(self.selectors, text="200Hz", variable=self.frequency, value="200Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=5, row=0)
-        ttk.Radiobutton(self.selectors, text="500Hz", variable=self.frequency, value="500Hz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=6, row=0)
-        ttk.Radiobutton(self.selectors, text="2kHz", variable=self.frequency, value="2kHz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=7, row=0)
-        ttk.Radiobutton(self.selectors, text="5kHz", variable=self.frequency, value="5kHz",
-                        command=lambda: self.show_frequency(self.frequency, self.uart, self.scope)).grid(column=8, row=0)
+        self.plot = self.plot_widget.addPlot()
+        self.plot.showGrid(x=True, y=True)
+        self.plot.setXRange(-5, 5)
+        self.plot.setYRange(-5, 5)
 
-        # Voltage buttons selection
-        ttk.Label(self.selectors, text="Voltages: ").grid(column=0, row=1)
-        ttk.Radiobutton(self.selectors, text="200mV", variable=self.voltage, value="200mV",
-                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=1, row=1)
-        ttk.Radiobutton(self.selectors, text="3.3V", variable=self.voltage, value="3.3V",
-                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=2, row=1)
-        ttk.Radiobutton(self.selectors, text="5V", variable=self.voltage, value="5V",
-                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=3, row=1)
-        ttk.Radiobutton(self.selectors, text="9V", variable=self.voltage, value="9V",
-                        command=lambda: self.show_voltage(self.voltage, self.uart, self.scope)).grid(column=4, row=1)
+        # --- Scatter principal ---
+        self.curve = self.plot.plot()
+        self.curve.setPen(None)
+        self.curve.setSymbol('s')
+        self.curve.setSymbolSize(0.5)
+        self.curve.setSymbolBrush('y')
 
-        # Impedance buttons selection
-        ttk.Label(self.selectors, text="Impedance: ").grid(column=0, row=2)
-        ttk.Radiobutton(self.selectors, text="45R", variable=self.impedance, value="45R",
-                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=1, row=2)
-        ttk.Radiobutton(self.selectors, text="415R", variable=self.impedance, value="415R",
-                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=2, row=2)
-        ttk.Radiobutton(self.selectors, text="726R", variable=self.impedance, value="726R",
-                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=3, row=2)
-        ttk.Radiobutton(self.selectors, text="1.5kR", variable=self.impedance, value="1.5kR",
-                        command=lambda: self.show_impedance(self.impedance, self.uart)).grid(column=4, row=2)
+        # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
+        self.persistence_depth = 10
+        self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
+        self.persistence_curves = []
 
-    def populate_indicators(self):
-        # Creating the indicator elements to show the selected frequency, voltage and impedance
-        font_size = 20
-        ttk.Label(self.indicators, text="Frequency").grid(column=0, row=0, padx=1)
-        ttk.Label(self.indicators, textvariable=self.frequency, font=("", font_size), foreground="green").grid(column=0, row=1, padx=1)
-        ttk.Label(self.indicators, text="Voltage").grid(column=0, row=2, padx=1)
-        ttk.Label(self.indicators, textvariable=self.voltage, font=("", font_size), foreground="blue").grid(column=0, row=3, padx=1)
-        ttk.Label(self.indicators, text="Impedance").grid(column=0, row=4, padx=1)
-        ttk.Label(self.indicators, textvariable=self.impedance, font=("", font_size), foreground="red").grid(column=0, row=5, padx=1)
+        for i in range(self.persistence_depth):
+            alpha = int(255 * (1 - i / self.persistence_depth))
+            curve = self.plot.plot(
+                pen=None,
+                symbol='s',
+                symbolSize=0.3,
+                symbolBrush=(255, 255, 0, alpha)
+            )
+            self.persistence_curves.append(curve)
 
-        # Creating the capture button
-        ttk.Button(self.indicators, text="Capture trace",
-                   command=lambda: self.capture_trace(plt)).grid(column=0, row=6, padx=1, sticky=W)
+        # Panel de controles
+        controls_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(controls_layout, 0)
 
-        # Creating the event monitoring
-        ttk.Label(self.serial_communication, text="Events monitor:").grid(column=0, row=0, padx=1, sticky=W)
-        self.log = Text(self.serial_communication, state="disabled", width=70, height=5, wrap="word", bg="light gray")
-        self.log.grid(column=0, row=1, padx=5, pady=5, sticky=W)
+        # Crear log e indicadores primero para evitar errores cuando los radio buttons se activen
+        self.build_event_monitor(controls_layout)
+        self.build_indicators(controls_layout)
+        self.build_frequency_controls(controls_layout)
+        self.build_voltage_controls(controls_layout)
+        self.build_impedance_controls(controls_layout)
 
-    def about_window(self):
-        """The typical about window..."""
-        about = Toplevel(self.the_root)
-        about.transient(self.the_root)
-        about.grab_set()
-        about.focus_set()
-        about.resizable(False, False)
-        about.title("About...")
-        about.geometry("200x100")
-        about.tk.call('wm', 'iconphoto', about._w, self.icon)
-        about.rowconfigure(0, weight=1)
-        about.columnconfigure(0, weight=1)
-        Label(about, text="Mi programita version 0.9", pady=20).grid(column=0, row=0)
-        ttk.Button(about, text="OK", command=about.destroy).grid(column=0, row=2, pady=8, padx=8, sticky=E)
+        controls_layout.addStretch()
 
-# --------------------------------------------------------------------------------------------------------------------
+        # Menú
+        self.build_menu()
 
-    def starting_scope(self):
-        """Method that configures and starts a thread to handle the data capture of the Hantek oscilloscope"""
-        self.scope = Oscilloscope()
-        self.scope.setup()
-        if self.scope.open_handle():
-            # Upload the firmware into device's RAM
-            if not self.scope.is_device_firmware_present:
-                self.scope.flash_firmware()
+        # Timer de actualización del gráfico
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_plot)
+        self.timer.start(10)  # 20ms = ~50 FPS
 
-            # Read calibration values from EEPROM. TODO: Make a calibration process
-            self.calibration = self.scope.get_calibration_values()
+    # ----------------------- MENÚ -----------------------
 
-            # Set the scope interface: 0 = BULK, >0 = ISO, 1=3072,2=2048,3=1024 bytes per 125 us
-            self.scope.set_interface(0)  # Use BULK unless you have specific need for ISO xfer
-            self.scope.set_num_channels(2)
-            self.scope.set_sample_rate(102)
+    def build_menu(self):
+        menubar = self.menuBar()
 
-            # Set the gain for CH1 and CH2: the value is a divisor of the default 5V voltage
-            self.scope.set_ch1_voltage_range(10)    # V channel
-            self.scope.set_ch2_voltage_range(10)    # I channel
+        ic_menu = menubar.addMenu("IC Profile")
+        ic_menu.addSeparator()
 
-            # Initializing the thread to measure data
-            self.scope_is_run = True
-            self.scope_thread = Thread(target=self.get_data, daemon=True)
-            self.scope_thread.start()
-        else:
-            self.write_to_log("Oscilloscope not detected")
+        device_menu = menubar.addMenu("Device")
+        device_menu.addAction("Connect...", self.connecting_window)
+        device_menu.addAction("Disconnect", self.disconnecting_device)
 
-    def get_data(self):
-        """Method that captures and sends two lists representing the two channels of the Hantek oscilloscope"""
-        self.scope.start_capture()
-        self.scope.read_data(data_size=0xC00, raw=True)  # Discard the first block of data
+        about_menu = menubar.addMenu("About")
 
-        while self.scope_is_run:
-            # The scope returns a list of two bytearrays (V/I)
-            raw_ch1, raw_ch2 = self.scope.read_data(data_size=0xC00, raw=True)
+    # ----------------------- CONTROLES -----------------------
 
-            if len(raw_ch1) != 0xC00 or len(raw_ch2) != 0xC00:
-                continue
+    def build_frequency_controls(self, parent):
+        group = QtWidgets.QGroupBox("Frequencies")
+        layout = QtWidgets.QHBoxLayout(group)
 
-            ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
-            ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
+        freqs = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
 
-            with self.scope_lock:
-                self.x_signal = ch1
-                self.y_signal = ch2
+        for f in freqs:
+            btn = QtWidgets.QRadioButton(f)
+            btn.toggled.connect(lambda checked, val=f: self.on_frequency(val) if checked else None)
+            layout.addWidget(btn)
+            if f == "5Hz":
+                btn.setChecked(True)
 
-    def init(self):
-        """Initialization  of the animated plot function"""
-        self.scatter.set_offsets(np.empty((0, 2)))
-        return self.scatter,
+        parent.addWidget(group)
 
-    def update(self, frame):
-        """Method called to show a frame in the animated plot"""
-        with self.scope_lock:
-            x = self.x_signal
-            y = self.y_signal
+    def on_frequency(self, value):
+        self.clear_persistence()
+        self.frequency = value
+        self.show_frequency(value)
+        self.freq_label.setText(value)
 
-        if not x or not y:
-            return self.scatter,
+    def build_voltage_controls(self, parent):
+        group = QtWidgets.QGroupBox("Voltages")
+        layout = QtWidgets.QHBoxLayout(group)
 
-        self.scatter.set_offsets(np.column_stack((x, y)))
-        return self.scatter,
+        voltages = ["200mV", "3.3V", "5V", "9V"]
 
-    def populate_plotter(self):
-        """Method to populate the frame representing the animated plotter"""
-        # Create a figure and the axis
-        self.fig, ax = plt.subplots(figsize=(5, 4))
-        ax.set_xlim(-5, 5)
-        ax.set_ylim(-5, 5)
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        ax.grid(True)
-        ax.set_xticks([n for n in range(-5, 6)])
-        ax.set_yticks([n for n in range(-5, 6)])
-        self.scatter = ax.scatter([], [], s=1)  # Empty plot to update
-        self.fig.tight_layout(pad=0)
-        ax.set_position((0.05, 0.05, 0.92, 0.92))
-        # The signal to plot
-        if self.canvas is not None:
-            self.canvas.get_tk_widget().destroy()
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.tracer)
-        self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+        for v in voltages:
+            btn = QtWidgets.QRadioButton(v)
+            btn.toggled.connect(lambda checked, val=v: self.on_voltage(val) if checked else None)
+            layout.addWidget(btn)
+            if v == "200mV":
+                btn.setChecked(True)
 
-    def animate_plot(self):
-        # Create animation
-        self.ani = FuncAnimation(self.fig, self.update, init_func=self.init, blit=True, interval=20,
-                                 cache_frame_data=False)
+        parent.addWidget(group)
 
-    def connecting_device(self):
-        """Method to establish the connection with the curve tracer, gets port and speed data from the connection
-        window and starts the connection, and the capturing signals from the oscilloscope if configured (default yes)
-        """
-        port = self.port_combobox.get()
-        baud = int(self.baud_combobox.get())
+    def on_voltage(self, value):
+        self.clear_persistence()
+        self.voltage = value
+        self.show_voltage(value)
+        self.volt_label.setText(value)
+
+    def build_impedance_controls(self, parent):
+        group = QtWidgets.QGroupBox("Impedance")
+        layout = QtWidgets.QHBoxLayout(group)
+
+        impedances = ["45R", "415R", "726R", "1.5kR"]
+
+        for imp in impedances:
+            btn = QtWidgets.QRadioButton(imp)
+            btn.toggled.connect(lambda checked, val=imp: self.on_impedance(val) if checked else None)
+            layout.addWidget(btn)
+            if imp == "45R":
+                btn.setChecked(True)
+
+        parent.addWidget(group)
+
+    def on_impedance(self, value):
+        self.clear_persistence()
+        self.impedance = value
+        self.show_impedance(value)
+        self.imp_label.setText(value)
+
+    def build_indicators(self, parent):
+        group = QtWidgets.QGroupBox("Indicators")
+        layout = QtWidgets.QGridLayout(group)
+
+        self.freq_label = QtWidgets.QLabel("5Hz")
+        self.volt_label = QtWidgets.QLabel("200mV")
+        self.imp_label = QtWidgets.QLabel("45R")
+
+        font = self.freq_label.font()
+        font.setPointSize(20)
+        self.freq_label.setFont(font)
+        self.volt_label.setFont(font)
+        self.imp_label.setFont(font)
+
+        layout.addWidget(QtWidgets.QLabel("Frequency"), 0, 0)
+        layout.addWidget(self.freq_label, 1, 0)
+
+        layout.addWidget(QtWidgets.QLabel("Voltage"), 2, 0)
+        layout.addWidget(self.volt_label, 3, 0)
+
+        layout.addWidget(QtWidgets.QLabel("Impedance"), 4, 0)
+        layout.addWidget(self.imp_label, 5, 0)
+
+        parent.addWidget(group)
+
+    def build_event_monitor(self, parent):
+        group = QtWidgets.QGroupBox("Events monitor")
+        layout = QtWidgets.QVBoxLayout(group)
+
+        self.log = QtWidgets.QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setStyleSheet("""
+            background-color: #000;
+            color: #0f0;
+            font-family: Consolas, monospace;
+        """)
+
+        layout.addWidget(self.log)
+        parent.addWidget(group)
+
+    def log_event(self, text):
+        from datetime import datetime
+        now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        self.log.append(f"{now} - {text}")
+
+    # ----------------------- COMANDOS DE CONTROL -----------------------
+
+    def show_frequency(self, value):
+        if not self.connection_active or self.uart is None:
+            # self.log_event("UART connection object isn't initiated yet")
+            return
+
+        # Envía comando
+        cmd = self.frequencies[value]
+        self.send_command(cmd)
+
+        # Actualiza el osciloscopio
+        if self.use_scope and self.scope is not None:
+            if value == "5Hz":
+                self.scope.set_sample_rate(102)
+            elif value == "20Hz":
+                self.scope.set_sample_rate(106)
+            elif value in ("50Hz", "60Hz"):
+                self.scope.set_sample_rate(110)
+            elif value == "200Hz":
+                self.scope.set_sample_rate(150)
+            else:
+                self.scope.set_sample_rate(1)
+
+    def show_voltage(self, value):
+        if not self.connection_active or self.uart is None:
+            # self.log_event("UART connection object isn't initiated yet")
+            return
+
+        cmd = self.voltages[value]
+        self.send_command(cmd)
+
+        if self.use_scope and self.scope is not None:
+            if value == "200mV":
+                self.scope.set_ch1_voltage_range(10)
+                self.scope.set_ch2_voltage_range(10)
+            else:
+                self.scope.set_ch1_voltage_range(1)
+                self.scope.set_ch2_voltage_range(1)
+
+    def show_impedance(self, value):
+        if not self.connection_active or self.uart is None:
+            # self.log_event("UART connection object isn't initiated yet")
+            return
+
+        cmd = self.d_impedance[value]
+        self.send_command(cmd)
+
+    def send_command(self, message):
+        try:
+            if self.uart is not None:
+                self.uart.write(message.encode("utf-8"))
+                self.log_event(f"Sending: {message}")
+            else:
+                self.log_event("UART connection object isn't initiated yet")
+        except Exception as e:
+            self.log_event(repr(e))
+
+    # ----------------------- CONEXIÓN -----------------------
+
+    def connecting_window(self):
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Configure serial communication")
+        dialog.setModal(True)
+
+        layout = QtWidgets.QGridLayout(dialog)
+
+        # PORTS
+        layout.addWidget(QtWidgets.QLabel("Select Port:"), 0, 0)
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        if not ports:
+            ports = ["NO_PORTS"]
+
+        self.port_combo = QtWidgets.QComboBox()
+        self.port_combo.addItems(ports)
+        layout.addWidget(self.port_combo, 0, 1)
+
+        # BAUD
+        layout.addWidget(QtWidgets.QLabel("Select Baud Rate:"), 1, 0)
+        self.baud_combo = QtWidgets.QComboBox()
+        self.baud_combo.addItems(["2400", "4800", "9600", "14400", "19200", "57600", "115200"])
+        self.baud_combo.setCurrentText("9600")
+        layout.addWidget(self.baud_combo, 1, 1)
+
+        # SCOPE CHECKBOX
+        self.scope_checkbox = QtWidgets.QCheckBox("Connect Scope")
+        self.scope_checkbox.setChecked(True)
+        layout.addWidget(self.scope_checkbox, 2, 1)
+
+        # CONNECT BUTTON
+        btn = QtWidgets.QPushButton("Connect")
+        btn.clicked.connect(lambda: self.connecting_device(dialog))
+        layout.addWidget(btn, 3, 1)
+
+        dialog.exec()
+
+    def connecting_device(self, dialog):
+        port = self.port_combo.currentText()
+        baud = int(self.baud_combo.currentText())
+        self.use_scope = self.scope_checkbox.isChecked()
+
         try:
             self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
             self.connection_active = True
-            # The uart rx is received in a method opened in a different thread
-            self.thread_uart = Thread(target=self.read_from_port)
-            self.thread_uart.daemon = True
+
+            # Thread de lectura UART
+            self.thread_uart = Thread(target=self.read_from_port, daemon=True)
             self.thread_uart.start()
-            self.monitoring_serial = True
-            self.send_command("hello", self.uart) # The command to start the connection in the remote
-            # self.populate_plotter()
+
+            self.send_command("hello")
+
         except Exception as e:
-            self.write_to_log(repr(e))
-        time.sleep(1)
-        # If the oscilloscope is wanted to be activated, starts the capture
-        if self.use_scope.get():
+            self.log_event(repr(e))
+            return
+
+        # Iniciar scope
+        if self.use_scope:
             self.starting_scope()
             if self.scope_is_run:
-                # Once the oscilloscope capturing process is running, the plotting is initialized in a new thread
-                self.populate_plotter()
-                self.animate_plot()
-                # self.thread_animation = Thread(target=self.animate_plot)
-                # self.thread_animation.start()
-        time.sleep(0.5)
-        # Closes the communication window
-        self.setup_uart.destroy()
+                self.log_event("Scope started")
 
-    def connecting_window(self):
-        """Method called from the menu to open a window with the data needed to start the uart communication with the
-        curve tracer and USB communication with the oscilloscope"""
-        self.setup_uart = Toplevel(self.the_root)
-        self.setup_uart.resizable(False, False)
-        self.setup_uart.transient(self.the_root)
-        self.setup_uart.grab_set()
-        self.setup_uart.focus_set()
-        self.setup_uart.title("Configure serial communication")
-        self.icon = PhotoImage(file='scope.gif')
-        self.setup_uart.tk.call('wm', 'iconphoto', self.setup_uart._w, self.icon)
-        ttk.Label(self.setup_uart, text="Select Port:").grid(row=0, column=0, padx=40, pady=30, sticky=W)
-        # Look for the connected uart ports in the system and creating a widget list of them
-        # TODO: Can be filtered by serial number of the USB/UART conversor and show only the curve tracer port
-        ports = [port.device for port in serial.tools.list_ports.comports()]
-        if len(ports) == 0:
-            ports = "______NO_PORTS______"
-        self.port_combobox = ttk.Combobox(self.setup_uart, values=ports, state="readonly")
-        self.port_combobox.bind("<Button-1>", self.callback)
-        self.port_combobox.grid(row=0, column=1, padx=5, pady=30)
-        self.port_combobox.set(ports)
-        # Widget list of port speed options
-        ttk.Label(self.setup_uart, text="Select Baud Rate:").grid(row=1, column=0, padx=40, pady=3, sticky=W)
-        self.baud_combobox = ttk.Combobox(self.setup_uart, values=["2400", "4800", "9600", "14400", "19200",
-                                                                   "57600", "115200"], state="readonly")
-        # Set the default speed
-        self.baud_combobox.set("9600")
-        self.baud_combobox.grid(row=1, column=1, padx=5, pady=3)
-
-        # Option to connect and capture oscilloscope data, activated by default
-        self.use_scope.set(True)
-        self.check = ttk.Checkbutton(self.setup_uart, text="Connect Scope", variable=self.use_scope,
-                                     offvalue=False, onvalue=True)
-        self.check.grid(row=2, column=1, padx=5, pady=5)
-
-        # Widget button to call the curve tracer connection method, disabled if there's no detected comports
-        self.connect_button = ttk.Button(self.setup_uart, text="Connect", command= lambda: self.connecting_device())
-        if ports == "______NO_PORTS______":
-            self.connect_button.config(state=tkinter.DISABLED)
-        self.connect_button.grid(row=4, column=1, padx=90, pady=30)
-
-    def callback(self, event):
-        """Internal method to repopulate the comport list if any device is connected after the connection window is
-        opened, also enables the connection widget button"""
-        ports = [port.device for port in serial.tools.list_ports.comports()]
-        if len(ports) > 0:
-            self.port_combobox.set(ports)
-            self.port_combobox["values"] = ports
-            self.connect_button.config(state=tkinter.NORMAL)
-
-    def disconnecting_device(self):
-        """Method called in the menu to disconnect the remote and stop the capturing data and signal plotting"""
-        if self.uart is not None:
-            self.send_command("bye", self.uart)     # Command to disconnect the remote
-            time.sleep(0.1)
-            self.connection_active = False
-            self.uart.close()
-            time.sleep(0.1)
-        else:
-            self.write_to_log("Nothing to disconnect")
-        # Process to stopping the oscilloscope capture and the plotting process
-        if self.scope is not None:
-            self.scope_is_run = False
-            if self.use_scope.get():
-                self.scope.stop_capture()
-                time.sleep(0.5)
-                self.scope.close_handle()
+        dialog.accept()
 
     def read_from_port(self):
-        """Method to monitor the receiving data in the uart connection, is run constantly in an independent thread
-        Here, it will receive the confirmation commands of the remote to change the parameter in the oscilloscope"""
-        while self.connection_active:  # Check the flag in the reading loop
+        while self.connection_active:
             try:
-                if self.uart.inWaiting() > 0:
-                    answer = self.uart.read_until()
-                    self.decoded_answer = answer.decode("utf-8").replace("\r\n", "")
-                    self.received_command = True
-                    # Depending on the first letter of the confirmation command received, it will determine the process
-                    if self.decoded_answer[0] == "F":
-                        self.frequency.set(self.frequency_dict[self.decoded_answer])
-                        if self.use_scope.get():
-                            # Changing the convenient sampling data in the oscilloscope
-                            if self.frequency.get() == "5Hz":
-                                self.scope.set_sample_rate(102)
-                            elif self.frequency.get() == "20Hz":
-                                self.scope.set_sample_rate(106)
-                            elif self.frequency.get() == "50Hz" or self.frequency.get() == "60Hz":
-                                self.scope.set_sample_rate(110)
-                            elif self.frequency.get() == "200Hz":
-                                self.scope.set_sample_rate(150)
-                            else:
-                                self.scope.set_sample_rate(1)
-                    elif self.decoded_answer[0] == "V":
-                        self.voltage.set(self.voltage_dict[self.decoded_answer])
-                        # Changing the convenient vertical range (voltage) data in the oscilloscope
-                        if self.use_scope.get():
-                            if self.voltage.get() == "200mV":
-                                self.scope.set_ch1_voltage_range(10)
-                                self.scope.set_ch2_voltage_range(10)
-                            else:
-                                self.scope.set_ch1_voltage_range(1)
-                                self.scope.set_ch2_voltage_range(1)
-                    elif self.decoded_answer[0] == "R":
-                        # Receiving confirmation impedance command of the remote
-                        self.impedance.set(self.impedance_dict[self.decoded_answer])
-                    elif self.decoded_answer[0] == "c":
-                        # Receiving confirmation capture button pressed command in the remote
-                        self.capture_trace(plt)
-                    self.write_to_log("Receiving: " + self.decoded_answer)
-                    self.received_command = False
+                if self.uart.in_waiting > 0:
+                    answer = self.uart.read_until().decode("utf-8").strip()
+                    self.signals.uart_message.emit(f"Receiving: {answer}")
+
+                    if answer.startswith("F"):
+                        self.frequency = self.frequency_dict[answer]
+                        self.freq_label.setText(self.frequency)
+
+                    elif answer.startswith("V"):
+                        self.voltage = self.voltage_dict[answer]
+                        self.volt_label.setText(self.voltage)
+
+                    elif answer.startswith("R"):
+                        self.impedance = self.impedance_dict[answer]
+                        self.imp_label.setText(self.impedance)
+
+                    elif answer.startswith("c"):
+                        self.log_event("Remote capture command received")
+
             except Exception as e:
-                self.write_to_log(repr(e))
+                self.signals.uart_message.emit(repr(e))
                 break
 
-    def on_closing(self):
-        """Method called if the close [X] icon in the main window is pressed, it sends the disconnecting command to the
-        remote and stops all the capturing and plotting processes if they are opened"""
+    def disconnecting_device(self):
+        """Disconnect UART and stop scope capture."""
+
+        # --- UART ---
         if self.uart is not None:
-            self.send_command("bye", self.uart)
+            self.send_command("bye")
             time.sleep(0.1)
+
             self.connection_active = False
-            self.uart.close()
+            try:
+                self.uart.close()
+            except Exception as e:
+                self.log_event(f"UART close error: {e}")
+
             time.sleep(0.1)
-        if self.use_scope.get():
-            if self.scope_is_run:
-                self.scope_is_run = False
-                time.sleep(0.1)
-                self.scope.stop_capture()
-                time.sleep(0.5)
-                self.scope.close_handle()
-                self.scope_thread.join()
-        self.the_root.quit()
-        self.the_root.destroy()
-        sys.exit()
+            self.log_event("UART disconnected")
+        else:
+            self.log_event("Nothing to disconnect")
+
+        # --- SCOPE ---
+        if self.scope is not None:
+            self.scope_is_run = False
+
+            if self.use_scope:
+                try:
+                    self.scope.stop_capture()
+                    time.sleep(0.5)
+                    self.scope.close_handle()
+                    self.log_event("Scope stopped and closed")
+                except Exception as e:
+                    self.log_event(f"Scope error: {e}")
+
+    # ----------------------- OSCILOSCOPIO -----------------------
+
+    def starting_scope(self):
+        """Configura e inicia la thread de captura del Hantek."""
+        try:
+            self.scope = Oscilloscope()
+            self.scope.setup()
+
+            if not self.scope.open_handle():
+                self.log_event("Oscilloscope not detected")
+                return
+
+            # Firmware
+            if not self.scope.is_device_firmware_present:
+                self.scope.flash_firmware()
+
+            # Calibración
+            self.calibration = self.scope.get_calibration_values()
+
+            # Interface y canales
+            self.scope.set_interface(0)  # BULK
+            self.scope.set_num_channels(2)
+            self.scope.set_sample_rate(102)
+
+            # Ganhos iniciales
+            self.scope.set_ch1_voltage_range(10)
+            self.scope.set_ch2_voltage_range(10)
+
+            # Thread de captura
+            self.scope_is_run = True
+            self.scope_thread = Thread(target=self.get_data, daemon=True)
+            self.scope_thread.start()
+
+            self.log_event("Oscilloscope started")
+
+        except Exception as e:
+            self.log_event(f"Scope error: {e}")
+
+    def get_data(self):
+        """Captura contínua de los dos canales del Hantek."""
+        try:
+            self.scope.start_capture()
+            self.scope.read_data(data_size=0xC00, raw=True)  # Descartar primer bloque
+
+            while self.scope_is_run:
+                raw_ch1, raw_ch2 = self.scope.read_data(data_size=0xC00, raw=True)
+
+                if len(raw_ch1) != 0xC00 or len(raw_ch2) != 0xC00:
+                    continue
+
+                ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
+                ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
+
+                # Actualiza buffers de plot
+                with self.scope_lock:
+                    self.x_signal = ch1
+                    self.y_signal = ch2
+
+        except Exception as e:
+            self.signals.scope_message.emit(f"Scope thread error: {e}")
+
+    # ----------------------- ACTUALIZACIÓN DE GRÁFICO -----------------------
+
+    def clear_persistence(self):
+        for i in range(self.persistence_depth):
+            self.persistence_buffer[i] = ([], [])
+            self.persistence_curves[i].setData([], [])
+
+
+    def update_plot(self):
+        with self.scope_lock:
+            x = self.x_signal[:]
+            y = self.y_signal[:]
+
+        if not x or not y:
+            return
+
+        # 1. Empurrar o buffer (shift)
+        for i in range(self.persistence_depth - 1, 0, -1):
+            self.persistence_buffer[i] = self.persistence_buffer[i - 1]
+
+        # 2. Inserir o frame novo no topo
+        self.persistence_buffer[0] = (x, y)
+
+        # 3. Atualizar curvas
+        for i in range(self.persistence_depth):
+            px, py = self.persistence_buffer[i]
+            self.persistence_curves[i].setData(px, py)
+
+
+    # def update_plot(self):
+    #     with self.scope_lock:
+    #         x = self.x_signal[:]
+    #         y = self.y_signal[:]
+    #
+    #     if not x or not y:
+    #         return
+    #
+    #     # Empurrar curvas antigas
+    #     for i in range(self.persistence_depth - 1, 0, -1):
+    #         old_x = self.persistence_curves[i - 1].xData
+    #         old_y = self.persistence_curves[i - 1].yData
+    #
+    #         # Se não houver dados válidos, limpa
+    #         if old_x is None or old_y is None:
+    #             self.persistence_curves[i].setData([], [])
+    #         else:
+    #             self.persistence_curves[i].setData(old_x, old_y)
+    #
+    #     # Inserir curva nova no topo
+    #     self.persistence_curves[0].setData(x, y)
+
+
+
+
+    # def update_plot(self):
+    #     with self.scope_lock:
+    #         x = self.x_signal[:]
+    #         y = self.y_signal[:]
+    #
+    #     if not x or not y:
+    #         return
+    #
+    #     # Scatter real
+    #     self.curve.setData(x, y)
+
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+    win = CurveTracerWindow()
+    win.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    # Creating main window
-    if sys.platform == "linux":
-        os.system("clear")
-    elif sys.platform == "windows":
-        os.system("cls")
-    print("Starting program...")
-    root = Tk()
-    app = VITracerGUI(root)
-
-    root.mainloop()
+    main()
