@@ -7,3 +7,5 @@ tests.py
 comparing.png
 /.venv
 /board
+__pycache__/
+vi_tracerGUI_tkinter.py

@@ -6,9 +6,12 @@ import threading
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Signal, QObject
 import pyqtgraph as pg
+import pyqtgraph.exporters
 import time
 import serial
 import serial.tools.list_ports
+import os
+from PySide6.QtGui import QAction
 
 
 # Señales Qt para comunicación thread-safe
@@ -16,6 +19,135 @@ class WorkerSignals(QObject):
     """Señales para comunicación entre threads y la GUI"""
     uart_message = Signal(str)
     scope_message = Signal(str)
+    update_frequency = Signal(str)
+    update_voltage = Signal(str)
+    update_impedance = Signal(str)
+
+
+class PortComboBox(QtWidgets.QComboBox):
+    popup_about_to_show = Signal()
+
+    def showPopup(self):
+        self.popup_about_to_show.emit()
+        super().showPopup()
+
+
+class ICProfileWidget(QtWidgets.QWidget):
+    capture_requested = Signal(str)  # Emits path to save image to
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.base_folder = ""
+        self.current_folder = ""
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QtWidgets.QFormLayout(self)
+
+        # Board Name
+        self.board_name = QtWidgets.QLineEdit()
+        layout.addRow("Board Name:", self.board_name)
+
+        # IC Label (U...)
+        self.ic_label = QtWidgets.QLineEdit()
+        self.ic_label.setFixedWidth(60)
+        layout.addRow("IC Label (U..):", self.ic_label)
+
+        # Create Tree Button
+        self.btn_create_tree = QtWidgets.QPushButton("Create/Select Tree")
+        self.btn_create_tree.clicked.connect(self.create_tree)
+        layout.addRow(self.btn_create_tree)
+
+        layout.addRow(QtWidgets.QLabel("--- Capture ---"))
+
+        # Pin Count
+        self.pin_count = QtWidgets.QSpinBox()
+        self.pin_count.setRange(1, 999)
+        self.pin_count.setValue(1)
+        layout.addRow("Total Pins:", self.pin_count)
+
+        # IC Name
+        self.ic_name = QtWidgets.QLineEdit()
+        layout.addRow("IC Name:", self.ic_name)
+
+        # Status / New IC
+        self.btn_new_ic = QtWidgets.QPushButton("New IC")
+        self.btn_new_ic.clicked.connect(self.new_ic)
+        layout.addRow(self.btn_new_ic)
+
+        # Current Pin Status
+        self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
+        layout.addRow("Next Pin:", self.lbl_pin_status)
+        self.current_pin = 1
+
+        # Capture Button
+        self.btn_capture = QtWidgets.QPushButton("Capture Trace")
+        self.btn_capture.clicked.connect(self.capture)
+        self.btn_capture.setEnabled(False)
+        layout.addRow(self.btn_capture)
+
+        # View Comparison
+        self.btn_view_comp = QtWidgets.QPushButton("View Comparison")
+        self.btn_view_comp.clicked.connect(self.view_comparison)
+        layout.addRow(self.btn_view_comp)
+
+    def create_tree(self):
+        board = self.board_name.text().strip()
+        label = self.ic_label.text().strip()
+
+        if not board or not label:
+            QtWidgets.QMessageBox.warning(self, "Missing Info", "Please enter Board Name and IC Label.")
+            return
+
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Base Folder")
+        if folder:
+            self.base_folder = folder
+            # Create structure: Base/Board/Label
+            self.current_folder = os.path.join(self.base_folder, board, label)
+            os.makedirs(self.current_folder, exist_ok=True)
+            QtWidgets.QMessageBox.information(self, "Created", f"Folder created:\n{self.current_folder}")
+            self.btn_capture.setEnabled(True)
+            self.new_ic()
+
+    def new_ic(self):
+        self.current_pin = 1
+        self.update_status()
+        self.ic_name.setEnabled(True)
+        self.pin_count.setEnabled(True)
+
+    def update_status(self):
+        self.lbl_pin_status.setText(f"Pin {self.current_pin}")
+
+    def capture(self):
+        if not self.current_folder:
+            return
+        
+        ic_name = self.ic_name.text().strip()
+        # ic_label = self.ic_label.text().strip() # Already have folder
+        
+        if not ic_name:
+             QtWidgets.QMessageBox.warning(self, "Missing Info", "Please enter IC Name.")
+             return
+
+        if self.current_pin > self.pin_count.value():
+            QtWidgets.QMessageBox.information(self, "Done", "All pins for this IC captured.")
+            return
+
+        # Matches Tkinter format: ICName_ICLabel_pinX.png
+        # Tkinter: self.ic_name.get() + "_" +  self.ic_label.get() + "_" + "pin" + str(self.pin_captured) + ".png"
+        filename = f"{ic_name}_{self.ic_label.text().strip()}_pin{self.current_pin}.png"
+        path = os.path.join(self.current_folder, filename)
+        
+        self.capture_requested.emit(path)
+        
+        self.current_pin += 1
+        self.update_status()
+
+    def view_comparison(self):
+        # Open simple viewer for now
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Comparison Image", "", "Images (*.png *.jpg)")
+        if file_path:
+             os.startfile(file_path) # Simple open in default viewer
 
 
 class CurveTracerWindow(QtWidgets.QMainWindow):
@@ -37,6 +169,9 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.signals = WorkerSignals()
         self.signals.uart_message.connect(lambda msg: self.log_event(msg))
         self.signals.scope_message.connect(lambda msg: self.log_event(msg))
+        self.signals.update_frequency.connect(self.update_frequency_ui)
+        self.signals.update_voltage.connect(self.update_voltage_ui)
+        self.signals.update_impedance.connect(self.update_impedance_ui)
 
         # Variables de conexión y hardware
         self.uart = None
@@ -52,7 +187,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
         # Configuración de ventana
         self.setWindowTitle("Curve Tracer - Qt6")
-        self.resize(900, 600)
+        self.resize(1200, 800)
 
         # Estado de datos
         self.x_signal = []
@@ -65,32 +200,38 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.frequency = "5Hz"
         self.voltage = "200mV"
         self.impedance = "45R"
-        # Variables de configuración
-        self.frequency = "5Hz"
-        self.voltage = "200mV"
-        self.impedance = "45R"
         self.use_scope = True
 
+        # Referencias a RadioButtons
+        self.freq_radios = {}
+        self.volt_radios = {}
+        self.imp_radios = {}
+
         # ---- Layout principal ----
-        central = QtWidgets.QWidget()
-        self.setCentralWidget(central)
-        main_layout = QtWidgets.QHBoxLayout(central)
+        central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # --- NUEVA ESTRUCTURA DEL LAYOUT ---
+        # --- NUEVA ESTRUCTURA DEL LAYOUT (Iteración 2) ---
+        # Main Layout (Horizontal split)
+        main_layout = QtWidgets.QHBoxLayout(central_widget)
 
-        # Área de gráfico
-        self.plot_widget = pg.GraphicsLayoutWidget()
-        main_layout.addWidget(self.plot_widget, 1)
+        # ---------------- LEFT PANEL (Content) ----------------
+        left_panel_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(left_panel_layout, stretch=4)
 
-        self.plot = self.plot_widget.addPlot()
-        self.plot.showGrid(x=True, y=True)
-        self.plot.setXRange(-5, 5)
-        self.plot.setYRange(-5, 5)
-
-        # --- Scatter principal ---
-        self.curve = self.plot.plot()
-        self.curve.setPen(None)
-        self.curve.setSymbol('s')
-        self.curve.setSymbolSize(0.5)
-        self.curve.setSymbolBrush('y')
+        # 1. Plot (Top)
+        self.plot_widget = pg.PlotWidget(title="V-I Trace")
+        self.plot_widget.setLabel('left', 'Current (I)')
+        self.plot_widget.setLabel('bottom', 'Voltage (V)')
+        self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.setYRange(-5, 5)
+        self.plot_widget.setXRange(-5, 5)
+        left_panel_layout.addWidget(self.plot_widget, stretch=3)
+        
+        # Initialize PlotItem immediately
+        self.plot = self.plot_widget.getPlotItem()
+        self.plot_curve = self.plot.plot(pen=None, symbol='o', symbolSize=2, symbolBrush='y')
 
         # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
         self.persistence_depth = 10
@@ -107,26 +248,97 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             )
             self.persistence_curves.append(curve)
 
-        # Panel de controles
-        controls_layout = QtWidgets.QVBoxLayout()
-        main_layout.addLayout(controls_layout, 0)
+        # 2. Indicators (Middle) - Horizontal
+        indicators_group = QtWidgets.QGroupBox("Measurements")
+        indicators_layout = QtWidgets.QHBoxLayout()
+        indicators_group.setLayout(indicators_layout)
+        self.build_indicators(indicators_layout) # This adds V/F/R labels
+        left_panel_layout.addWidget(indicators_group)
 
-        # Crear log e indicadores primero para evitar errores cuando los radio buttons se activen
-        self.build_event_monitor(controls_layout)
-        self.build_indicators(controls_layout)
-        self.build_frequency_controls(controls_layout)
-        self.build_voltage_controls(controls_layout)
-        self.build_impedance_controls(controls_layout)
+        # 3. Log (Bottom)
+        metrics_label = QtWidgets.QLabel("Events Monitor:")
+        left_panel_layout.addWidget(metrics_label)
+        
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(150) # Increased height
+        left_panel_layout.addWidget(self.log_text, stretch=1)
 
-        controls_layout.addStretch()
+        # ---------------- RIGHT PANEL (Controls) ----------------
+        right_panel_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(right_panel_layout, stretch=1)
+        
+        # Controls Group
+        controls_group = QtWidgets.QGroupBox("Controls")
+        controls_layout = QtWidgets.QHBoxLayout() # Horizontal Layout for the group
+        controls_group.setLayout(controls_layout)
+        
+        # 1. Frequency Column
+        freq_col_layout = QtWidgets.QVBoxLayout()
+        freq_col_layout.addWidget(QtWidgets.QLabel("<b>Frequency:</b>"))
+        self.build_frequency_controls(freq_col_layout)
+        freq_col_layout.addStretch() # Push items up
+        controls_layout.addLayout(freq_col_layout)
+        
+        # Separator line (Optional, using frame or spacing)
+        # controls_layout.addSpacing(10)
+        
+        # 2. Voltage Column
+        volt_col_layout = QtWidgets.QVBoxLayout()
+        volt_col_layout.addWidget(QtWidgets.QLabel("<b>Voltage:</b>"))
+        self.build_voltage_controls(volt_col_layout)
+        volt_col_layout.addStretch()
+        controls_layout.addLayout(volt_col_layout)
+        
+        # 3. Impedance Column
+        imp_col_layout = QtWidgets.QVBoxLayout()
+        imp_col_layout.addWidget(QtWidgets.QLabel("<b>Impedance:</b>"))
+        self.build_impedance_controls(imp_col_layout)
+        imp_col_layout.addStretch()
+        controls_layout.addLayout(imp_col_layout)
+        
+        # Add the horizontal group to the right panel
+        right_panel_layout.addWidget(controls_group)
+        right_panel_layout.addStretch()
+
+        # -----------------------------------------------------
+
+        # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
+        self.persistence_depth = 10
+
+        self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
+        self.persistence_curves = []
+
+        for i in range(self.persistence_depth):
+            alpha = int(255 * (1 - i / self.persistence_depth))
+            curve = self.plot.plot(
+                pen=None,
+                symbol='s',
+                symbolSize=0.3,
+                symbolBrush=(255, 255, 0, alpha)
+            )
+    
 
         # Menú
         self.build_menu()
+
+        # IC Profile Dock
+        self.ic_dock = QtWidgets.QDockWidget("IC Profile", self)
+        self.ic_profile_widget = ICProfileWidget()
+        self.ic_profile_widget.capture_requested.connect(self.save_trace_image)
+        self.ic_dock.setWidget(self.ic_profile_widget)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.ic_dock)
+        self.ic_dock.hide()
 
         # Timer de actualización del gráfico
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(10)  # 20ms = ~50 FPS
+    
+    def closeEvent(self, event):
+        """Handle window close event to clean up resources."""
+        self.disconnecting_device()
+        event.accept()
 
     # ----------------------- MENÚ -----------------------
 
@@ -134,6 +346,12 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         menubar = self.menuBar()
 
         ic_menu = menubar.addMenu("IC Profile")
+        capture_action = ic_menu.addAction("Capture IC traces")
+        capture_action.triggered.connect(lambda: self.ic_dock.show())
+        
+        close_profile_action = ic_menu.addAction("Close IC traces")
+        close_profile_action.triggered.connect(lambda: self.ic_dock.hide())
+        
         ic_menu.addSeparator()
 
         device_menu = menubar.addMenu("Device")
@@ -146,18 +364,29 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def build_frequency_controls(self, parent):
         group = QtWidgets.QGroupBox("Frequencies")
-        layout = QtWidgets.QHBoxLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
 
-        freqs = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
+        frequencies = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
 
-        for f in freqs:
+
+        for f in frequencies:
             btn = QtWidgets.QRadioButton(f)
+            self.freq_radios[f] = btn  # Store reference
             btn.toggled.connect(lambda checked, val=f: self.on_frequency(val) if checked else None)
             layout.addWidget(btn)
             if f == "5Hz":
                 btn.setChecked(True)
 
         parent.addWidget(group)
+
+    def update_frequency_ui(self, value):
+        self.frequency = value
+        self.freq_label.setText(value)
+        if value in self.freq_radios:
+            btn = self.freq_radios[value]
+            was_blocked = btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(was_blocked)
 
     def on_frequency(self, value):
         self.clear_persistence()
@@ -167,18 +396,29 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def build_voltage_controls(self, parent):
         group = QtWidgets.QGroupBox("Voltages")
-        layout = QtWidgets.QHBoxLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
 
         voltages = ["200mV", "3.3V", "5V", "9V"]
 
+
         for v in voltages:
             btn = QtWidgets.QRadioButton(v)
+            self.volt_radios[v] = btn  # Store reference
             btn.toggled.connect(lambda checked, val=v: self.on_voltage(val) if checked else None)
             layout.addWidget(btn)
             if v == "200mV":
                 btn.setChecked(True)
 
         parent.addWidget(group)
+
+    def update_voltage_ui(self, value):
+        self.voltage = value
+        self.volt_label.setText(value)
+        if value in self.volt_radios:
+            btn = self.volt_radios[value]
+            was_blocked = btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(was_blocked)
 
     def on_voltage(self, value):
         self.clear_persistence()
@@ -188,18 +428,29 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def build_impedance_controls(self, parent):
         group = QtWidgets.QGroupBox("Impedance")
-        layout = QtWidgets.QHBoxLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
 
-        impedances = ["45R", "415R", "726R", "1.5kR"]
+        impedance = ["45R", "415R", "726R", "1.5kR"]
 
-        for imp in impedances:
+
+        for imp in impedance:
             btn = QtWidgets.QRadioButton(imp)
+            self.imp_radios[imp] = btn  # Store reference
             btn.toggled.connect(lambda checked, val=imp: self.on_impedance(val) if checked else None)
             layout.addWidget(btn)
             if imp == "45R":
                 btn.setChecked(True)
 
         parent.addWidget(group)
+
+    def update_impedance_ui(self, value):
+        self.impedance = value
+        self.imp_label.setText(value)
+        if value in self.imp_radios:
+            btn = self.imp_radios[value]
+            was_blocked = btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(was_blocked)
 
     def on_impedance(self, value):
         self.clear_persistence()
@@ -208,29 +459,40 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.imp_label.setText(value)
 
     def build_indicators(self, parent):
-        group = QtWidgets.QGroupBox("Indicators")
-        layout = QtWidgets.QGridLayout(group)
-
+        # Create labels
         self.freq_label = QtWidgets.QLabel("5Hz")
         self.volt_label = QtWidgets.QLabel("200mV")
         self.imp_label = QtWidgets.QLabel("45R")
 
         font = self.freq_label.font()
-        font.setPointSize(20)
+        font.setPointSize(14) # Reduced from 20 to 14
         self.freq_label.setFont(font)
         self.volt_label.setFont(font)
         self.imp_label.setFont(font)
+        
+        # 1. Frequency Column
+        freq_layout = QtWidgets.QVBoxLayout()
+        freq_layout.addWidget(QtWidgets.QLabel("Frequency"))
+        freq_layout.addWidget(self.freq_label)
+        parent.addLayout(freq_layout)
+        
+        parent.addSpacing(30)
 
-        layout.addWidget(QtWidgets.QLabel("Frequency"), 0, 0)
-        layout.addWidget(self.freq_label, 1, 0)
+        # 2. Voltage Column
+        volt_layout = QtWidgets.QVBoxLayout()
+        volt_layout.addWidget(QtWidgets.QLabel("Voltage"))
+        volt_layout.addWidget(self.volt_label)
+        parent.addLayout(volt_layout)
+        
+        parent.addSpacing(30)
 
-        layout.addWidget(QtWidgets.QLabel("Voltage"), 2, 0)
-        layout.addWidget(self.volt_label, 3, 0)
-
-        layout.addWidget(QtWidgets.QLabel("Impedance"), 4, 0)
-        layout.addWidget(self.imp_label, 5, 0)
-
-        parent.addWidget(group)
+        # 3. Impedance Column
+        imp_layout = QtWidgets.QVBoxLayout()
+        imp_layout.addWidget(QtWidgets.QLabel("Impedance"))
+        imp_layout.addWidget(self.imp_label)
+        parent.addLayout(imp_layout)
+        
+        parent.addStretch()
 
     def build_event_monitor(self, parent):
         group = QtWidgets.QGroupBox("Events monitor")
@@ -250,7 +512,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
     def log_event(self, text):
         from datetime import datetime
         now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-        self.log.append(f"{now} - {text}")
+        self.log_text.append(f"{now} - {text}")
 
     # ----------------------- COMANDOS DE CONTROL -----------------------
 
@@ -316,17 +578,15 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowTitle("Configure serial communication")
         dialog.setModal(True)
+        dialog.resize(350, 100)
 
         layout = QtWidgets.QGridLayout(dialog)
 
         # PORTS
         layout.addWidget(QtWidgets.QLabel("Select Port:"), 0, 0)
-        ports = [p.device for p in serial.tools.list_ports.comports()]
-        if not ports:
-            ports = ["NO_PORTS"]
-
-        self.port_combo = QtWidgets.QComboBox()
-        self.port_combo.addItems(ports)
+        
+        self.port_combo = PortComboBox()
+        self.port_combo.popup_about_to_show.connect(self.refresh_ports)
         layout.addWidget(self.port_combo, 0, 1)
 
         # BAUD
@@ -342,11 +602,36 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.scope_checkbox, 2, 1)
 
         # CONNECT BUTTON
-        btn = QtWidgets.QPushButton("Connect")
-        btn.clicked.connect(lambda: self.connecting_device(dialog))
-        layout.addWidget(btn, 3, 1)
+        self.connect_btn = QtWidgets.QPushButton("Connect")
+        self.connect_btn.clicked.connect(lambda: self.connecting_device(dialog))
+        layout.addWidget(self.connect_btn, 3, 1)
+
+        # Initial refresh
+        self.refresh_ports()
 
         dialog.exec()
+
+    def refresh_ports(self):
+        """Refresh the list of available COM ports and update connect button state."""
+        current_selection = self.port_combo.currentText()
+        self.port_combo.blockSignals(True)
+        self.port_combo.clear()
+        
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        
+        if not ports:
+            self.port_combo.addItems(["NO_PORTS"])
+            self.connect_btn.setEnabled(False)
+        else:
+            self.port_combo.addItems(ports)
+            self.connect_btn.setEnabled(True)
+            
+            # Restore previous selection if still available
+            index = self.port_combo.findText(current_selection)
+            if index >= 0:
+                self.port_combo.setCurrentIndex(index)
+        
+        self.port_combo.blockSignals(False)
 
     def connecting_device(self, dialog):
         port = self.port_combo.currentText()
@@ -383,16 +668,19 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                     self.signals.uart_message.emit(f"Receiving: {answer}")
 
                     if answer.startswith("F"):
-                        self.frequency = self.frequency_dict[answer]
-                        self.freq_label.setText(self.frequency)
+                        val = self.frequency_dict.get(answer)
+                        if val:
+                             self.signals.update_frequency.emit(val)
 
                     elif answer.startswith("V"):
-                        self.voltage = self.voltage_dict[answer]
-                        self.volt_label.setText(self.voltage)
+                        val = self.voltage_dict.get(answer)
+                        if val:
+                             self.signals.update_voltage.emit(val)
 
                     elif answer.startswith("R"):
-                        self.impedance = self.impedance_dict[answer]
-                        self.imp_label.setText(self.impedance)
+                        val = self.impedance_dict.get(answer)
+                        if val:
+                             self.signals.update_impedance.emit(val)
 
                     elif answer.startswith("c"):
                         self.log_event("Remote capture command received")
@@ -429,6 +717,10 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                     self.scope.stop_capture()
                     time.sleep(0.5)
                     self.scope.close_handle()
+                    
+                    if self.scope_thread and self.scope_thread.is_alive():
+                        self.scope_thread.join(timeout=2.0)
+                        
                     self.log_event("Scope stopped and closed")
                 except Exception as e:
                     self.log_event(f"Scope error: {e}")
@@ -517,47 +809,35 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         # 2. Inserir o frame novo no topo
         self.persistence_buffer[0] = (x, y)
 
+        # 2b. Atualizar a curva PRINCIPAL (para garantir visualização imediata)
+        if hasattr(self, 'plot_curve'):
+            self.plot_curve.setData(x, y)
+
         # 3. Atualizar curvas
+        # 3. Atualizar curvas
+        if hasattr(self, 'persistence_curves'):
+             if len(self.persistence_curves) < self.persistence_depth:
+                # Force re-initialization if empty (Emergency fix attempt)
+                if len(self.persistence_curves) == 0:
+                     for i in range(self.persistence_depth):
+                        alpha = int(255 * (1 - i / self.persistence_depth))
+                        curve = self.plot.plot(pen=None, symbol='s', symbolSize=0.3, symbolBrush=(255, 255, 0, alpha))
+                        self.persistence_curves.append(curve)
+                return # Skip this frame, wait for next
+        else:
+             return
+
         for i in range(self.persistence_depth):
             px, py = self.persistence_buffer[i]
             self.persistence_curves[i].setData(px, py)
 
+    def save_trace_image(self, path):
+        """Save the current plot state to an image file."""
+        exporter = pg.exporters.ImageExporter(self.plot)
+        exporter.parameters()['width'] = 800
+        exporter.export(path)
+        self.log_event(f"Saved trace to {os.path.basename(path)}")
 
-    # def update_plot(self):
-    #     with self.scope_lock:
-    #         x = self.x_signal[:]
-    #         y = self.y_signal[:]
-    #
-    #     if not x or not y:
-    #         return
-    #
-    #     # Empurrar curvas antigas
-    #     for i in range(self.persistence_depth - 1, 0, -1):
-    #         old_x = self.persistence_curves[i - 1].xData
-    #         old_y = self.persistence_curves[i - 1].yData
-    #
-    #         # Se não houver dados válidos, limpa
-    #         if old_x is None or old_y is None:
-    #             self.persistence_curves[i].setData([], [])
-    #         else:
-    #             self.persistence_curves[i].setData(old_x, old_y)
-    #
-    #     # Inserir curva nova no topo
-    #     self.persistence_curves[0].setData(x, y)
-
-
-
-
-    # def update_plot(self):
-    #     with self.scope_lock:
-    #         x = self.x_signal[:]
-    #         y = self.y_signal[:]
-    #
-    #     if not x or not y:
-    #         return
-    #
-    #     # Scatter real
-    #     self.curve.setData(x, y)
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
