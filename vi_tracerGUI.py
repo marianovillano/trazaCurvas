@@ -53,32 +53,31 @@ class ICProfileWidget(QtWidgets.QWidget):
         self.ic_label.setFixedWidth(60)
         layout.addRow("IC Label (U..):", self.ic_label)
 
-        # Create Tree Button
-        self.btn_create_tree = QtWidgets.QPushButton("Create/Select Tree")
-        self.btn_create_tree.clicked.connect(self.create_tree)
-        layout.addRow(self.btn_create_tree)
-
-        layout.addRow(QtWidgets.QLabel("--- Capture ---"))
+        # IC Name
+        self.ic_name = QtWidgets.QLineEdit()
+        layout.addRow("IC Name:", self.ic_name)
+        # layout.addRow(QtWidgets.QLabel("--- Capture ---"))
 
         # Pin Count
         self.pin_count = QtWidgets.QSpinBox()
         self.pin_count.setRange(1, 999)
         self.pin_count.setValue(1)
-        layout.addRow("Total Pins:", self.pin_count)
+        layout.addRow("Nº of Pins:", self.pin_count)     
 
-        # IC Name
-        self.ic_name = QtWidgets.QLineEdit()
-        layout.addRow("IC Name:", self.ic_name)
+        # Create Tree Button
+        self.btn_create_tree = QtWidgets.QPushButton("Create/Select Tree")
+        self.btn_create_tree.clicked.connect(self.create_tree)
+        layout.addRow(self.btn_create_tree)
 
+        # Current Pin Status
+        self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
+        layout.addRow("Pin to capture:", self.lbl_pin_status)
+        self.current_pin = 1
+        
         # Status / New IC
         self.btn_new_ic = QtWidgets.QPushButton("New IC")
         self.btn_new_ic.clicked.connect(self.new_ic)
         layout.addRow(self.btn_new_ic)
-
-        # Current Pin Status
-        self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
-        layout.addRow("Next Pin:", self.lbl_pin_status)
-        self.current_pin = 1
 
         # Capture Button
         self.btn_capture = QtWidgets.QPushButton("Capture Trace")
@@ -107,11 +106,14 @@ class ICProfileWidget(QtWidgets.QWidget):
             os.makedirs(self.current_folder, exist_ok=True)
             QtWidgets.QMessageBox.information(self, "Created", f"Folder created:\n{self.current_folder}")
             self.btn_capture.setEnabled(True)
-            self.new_ic()
+            #self.new_ic()
 
     def new_ic(self):
         self.current_pin = 1
         self.update_status()
+        self.ic_name.clear()
+        self.ic_label.clear()
+        self.pin_count.setValue(1)
         self.ic_name.setEnabled(True)
         self.pin_count.setEnabled(True)
 
@@ -121,6 +123,10 @@ class ICProfileWidget(QtWidgets.QWidget):
     def capture(self):
         if not self.current_folder:
             return
+        label = self.ic_label.text().strip()
+        board = self.board_name.text().strip()
+        self.current_folder = os.path.join(self.base_folder, board, label)
+        os.makedirs(self.current_folder, exist_ok=True)
         
         ic_name = self.ic_name.text().strip()
         # ic_label = self.ic_label.text().strip() # Already have folder
@@ -266,11 +272,14 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
         # ---------------- RIGHT PANEL (Controls) ----------------
         right_panel_layout = QtWidgets.QVBoxLayout()
-        main_layout.addLayout(right_panel_layout, stretch=1)
+        main_layout.addLayout(right_panel_layout, stretch=0) # Changed stretch to 0
         
         # Controls Group
         controls_group = QtWidgets.QGroupBox("Controls")
-        controls_layout = QtWidgets.QHBoxLayout() # Horizontal Layout for the group
+        controls_group.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Preferred) # Force minimum width
+        controls_layout = QtWidgets.QVBoxLayout() # Vertical Layout for the group
+        controls_layout.setSpacing(5)           # Reduce spacing between groups
+        controls_layout.setContentsMargins(5, 5, 5, 5) # Reduce margins
         controls_group.setLayout(controls_layout)
         
         # 1. Frequency Column
@@ -365,6 +374,8 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
     def build_frequency_controls(self, parent):
         group = QtWidgets.QGroupBox("Frequencies")
         layout = QtWidgets.QVBoxLayout(group)
+        layout.setSpacing(1)  # Reduce spacing between buttons
+        layout.setContentsMargins(1, 1, 1, 1) # Reduce group margins
 
         frequencies = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
 
@@ -397,6 +408,8 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
     def build_voltage_controls(self, parent):
         group = QtWidgets.QGroupBox("Voltages")
         layout = QtWidgets.QVBoxLayout(group)
+        layout.setSpacing(1)
+        layout.setContentsMargins(2, 2, 2, 2)
 
         voltages = ["200mV", "3.3V", "5V", "9V"]
 
@@ -429,6 +442,8 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
     def build_impedance_controls(self, parent):
         group = QtWidgets.QGroupBox("Impedance")
         layout = QtWidgets.QVBoxLayout(group)
+        layout.setSpacing(1)
+        layout.setContentsMargins(2, 2, 2, 2)
 
         impedance = ["45R", "415R", "726R", "1.5kR"]
 
@@ -789,6 +804,11 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
     # ----------------------- ACTUALIZACIÓN DE GRÁFICO -----------------------
 
     def clear_persistence(self):
+        # 3. Atualizar curvas
+        if hasattr(self, 'persistence_curves'):
+             if len(self.persistence_curves) < self.persistence_depth:
+                return
+
         for i in range(self.persistence_depth):
             self.persistence_buffer[i] = ([], [])
             self.persistence_curves[i].setData([], [])
