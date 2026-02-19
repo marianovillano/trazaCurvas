@@ -22,6 +22,7 @@ class WorkerSignals(QObject):
     update_frequency = Signal(str)
     update_voltage = Signal(str)
     update_impedance = Signal(str)
+    trigger_capture = Signal()  # Aciona captura de forma thread-safe
 
 
 class PortComboBox(QtWidgets.QComboBox):
@@ -335,6 +336,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.ic_dock = QtWidgets.QDockWidget("IC Profile", self)
         self.ic_profile_widget = ICProfileWidget()
         self.ic_profile_widget.capture_requested.connect(self.save_trace_image)
+        self.signals.trigger_capture.connect(self.ic_profile_widget.capture)  # Captura via serial
         self.ic_dock.setWidget(self.ic_profile_widget)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.ic_dock)
         self.ic_dock.hide()
@@ -697,9 +699,9 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                         if val:
                              self.signals.update_impedance.emit(val)
 
-                    elif answer.startswith("c"):
-                        self.log_event("Remote capture command received")
-
+                    elif answer.startswith("cap"):
+                        self.signals.uart_message.emit("Remote capture command received")
+                        self.signals.trigger_capture.emit()  # thread-safe: GUI executa a captura
             except Exception as e:
                 self.signals.uart_message.emit(repr(e))
                 break
