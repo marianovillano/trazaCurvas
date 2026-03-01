@@ -8,4 +8,5 @@ comparing.png
 /.venv
 /board
 __pycache__/
+*.joblib
 vi_tracerGUI_tkinter.py

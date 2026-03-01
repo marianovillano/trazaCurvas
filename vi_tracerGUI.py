@@ -4,6 +4,8 @@ from threading import Thread
 import threading
 
 from PySide6 import QtWidgets, QtCore
+from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Signal, QObject
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -25,7 +27,7 @@ class WorkerSignals(QObject):
     trigger_capture = Signal()  # Aciona captura de forma thread-safe
 
 
-class PortComboBox(QtWidgets.QComboBox):
+class PortComboBox(QComboBox):
     popup_about_to_show = Signal()
 
     def showPopup(self):
@@ -33,11 +35,21 @@ class PortComboBox(QtWidgets.QComboBox):
         super().showPopup()
 
 
-class ICProfileWidget(QtWidgets.QWidget):
+class ICProfileWidget(QWidget):
     capture_requested = Signal(str)  # Emits path to save image to
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.btn_view_comp = None
+        self.btn_capture = None
+        self.btn_new_ic = None
+        self.current_pin = 1
+        self.lbl_pin_status = None
+        self.btn_create_tree = None
+        self.pin_count = None
+        self.ic_name = None
+        self.ic_label = None
+        self.board_name = None
         self.base_folder = ""
         self.current_folder = ""
         self.setup_ui()
@@ -73,7 +85,7 @@ class ICProfileWidget(QtWidgets.QWidget):
         # Current Pin Status
         self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
         layout.addRow("Pin to capture:", self.lbl_pin_status)
-        self.current_pin = 1
+        # self.current_pin = 1
         
         # Status / New IC
         self.btn_new_ic = QtWidgets.QPushButton("New IC")
@@ -119,6 +131,8 @@ class ICProfileWidget(QtWidgets.QWidget):
         self.pin_count.setEnabled(True)
 
     def update_status(self):
+        if self.current_pin > self.pin_count.value():
+            return
         self.lbl_pin_status.setText(f"Pin {self.current_pin}")
 
     def capture(self):
@@ -146,7 +160,9 @@ class ICProfileWidget(QtWidgets.QWidget):
         path = os.path.join(self.current_folder, filename)
         
         self.capture_requested.emit(path)
-        
+
+        if self.current_pin == self.pin_count.value():
+            QtWidgets.QMessageBox.information(self, "Done", "All pins for this IC captured.")
         self.current_pin += 1
         self.update_status()
 
@@ -162,6 +178,14 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         super().__init__()
 
         # Configuración global de pyqtgraph
+        self.connect_btn = None
+        self.scope_checkbox = None
+        self.baud_combo = None
+        self.port_combo = None
+        self.log = None
+        self.imp_label = None
+        self.volt_label = None
+        self.freq_label = None
         pg.setConfigOptions(antialias=True)
 
         # Diccionarios de comandos (copiados de Functions para evitar dependencia de Tkinter)
@@ -229,7 +253,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
         # 1. Plot (Top)
         self.plot_widget = pg.PlotWidget(title="V-I Trace")
-        self.plot_widget.setLabel('left', 'Current (I)')
+        self.plot_widget.setLabel('left', 'Current (mA)')
         self.plot_widget.setLabel('bottom', 'Voltage (V)')
         self.plot_widget.showGrid(x=True, y=True)
         self.plot_widget.setYRange(-5, 5)
