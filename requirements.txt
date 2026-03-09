@@ -1,0 +1,10 @@
+PySide6>=6.10.2
+pyserial>=3.5
+matplotlib>=3.10.8
+numpy>=2.4.2
+scikit-learn>=1.5.0
+joblib>=1.4.0
+pyqtgraph>=0.14.0
+libusb1>=3.3.1
+torch>=2.10.0; python_version>='3.14'
+torchvision>=0.25.0; python_version>='3.14'

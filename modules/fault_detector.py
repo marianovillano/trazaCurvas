@@ -9,6 +9,30 @@ from pathlib import Path
 import joblib
 import argparse
 
+try:
+    import torch_directml
+    _DIRECTML_AVAILABLE = True
+except ImportError:
+    _DIRECTML_AVAILABLE = False
+
+
+def get_device():
+    """Selects the best available compute device.
+    Priority: DirectML (AMD/Intel GPU) > CUDA (Nvidia) > CPU
+    """
+    if _DIRECTML_AVAILABLE and torch_directml.device_count() > 0:
+        device = torch_directml.device(0)
+        name = torch_directml.device_name(0)
+        print(f"Using DirectML GPU: {name}")
+        return device
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
+        return device
+    else:
+        print("Using CPU (no GPU acceleration available)")
+        return torch.device("cpu")
+
 
 def get_transform():
     """Returns the image transformation pipeline."""
@@ -170,8 +194,8 @@ def main():
     parser.add_argument('--model-name', type=str, required=False, default="no file name", help='Insert the name of the model')
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    device = get_device()
+    # device = torch.device("cpu")
     
     truth_model_name = args.path_samples.name + ".joblib"
     full_path_and_name = os.path.join(args.path_samples, truth_model_name)
