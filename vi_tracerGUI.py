@@ -2,6 +2,7 @@ import sys
 from PyHT6022.LibUsbScope import Oscilloscope
 from threading import Thread
 import threading
+import csv
 
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtWidgets import QWidget
@@ -223,9 +224,10 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         # Estado de datos
         self.x_signal = []
         self.y_signal = []
-        self.x_signal = []
-        self.y_signal = []
-        #self.plot_style = "line" # "line" o "scatter"
+        self.buffer_fifo_x = [0] * 6144
+        self.buffer_fifo_y = [0] * 6144
+        self.data_size = 8000
+        self.block_1 = True
 
         # Variables de configuración
         self.frequency = "5Hz"
@@ -242,8 +244,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
         
-        # --- NUEVA ESTRUCTURA DEL LAYOUT ---
-        # --- NUEVA ESTRUCTURA DEL LAYOUT (Iteración 2) ---
         # Main Layout (Horizontal split)
         main_layout = QtWidgets.QHBoxLayout(central_widget)
 
@@ -262,22 +262,22 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         
         # Initialize PlotItem immediately
         self.plot = self.plot_widget.getPlotItem()
-        self.plot_curve = self.plot.plot(pen=None, symbol='o', symbolSize=2, symbolBrush='y')
+        self.plot_curve = self.plot.plot(pen=pg.mkPen('y', width=1), symbol=None)
 
         # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
         self.persistence_depth = 10
         self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
         self.persistence_curves = []
 
-        for i in range(self.persistence_depth):
-            alpha = int(255 * (1 - i / self.persistence_depth))
-            curve = self.plot.plot(
-                pen=None,
-                symbol='s',
-                symbolSize=0.3,
-                symbolBrush=(255, 255, 0, alpha)
-            )
-            self.persistence_curves.append(curve)
+        # for i in range(self.persistence_depth):
+        #     alpha = int(255 * (1 - i / self.persistence_depth))
+        #     curve = self.plot.plot(
+        #         pen=None,
+        #         symbol='s',
+        #         symbolSize=0.3,
+        #         symbolBrush=(255, 255, 0, alpha)
+        #     )
+        #     self.persistence_curves.append(curve)
 
         # 2. Indicators (Middle) - Horizontal
         indicators_group = QtWidgets.QGroupBox("Measurements")
@@ -336,23 +336,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         right_panel_layout.addStretch()
 
         # -----------------------------------------------------
-
-        # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
-        self.persistence_depth = 10
-
-        self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
-        self.persistence_curves = []
-
-        for i in range(self.persistence_depth):
-            alpha = int(255 * (1 - i / self.persistence_depth))
-            curve = self.plot.plot(
-                pen=None,
-                symbol='s',
-                symbolSize=0.3,
-                symbolBrush=(255, 255, 0, alpha)
-            )
     
-
         # Menú
         self.build_menu()
 
@@ -569,9 +553,9 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         # Actualiza el osciloscopio
         if self.use_scope and self.scope is not None:
             if value == "5Hz":
-                self.scope.set_sample_rate(102)
+                self.scope.set_sample_rate(105)
             elif value == "20Hz":
-                self.scope.set_sample_rate(106)
+                self.scope.set_sample_rate(110)
             elif value in ("50Hz", "60Hz"):
                 self.scope.set_sample_rate(110)
             elif value == "200Hz":
@@ -788,18 +772,20 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             # Interface y canales
             self.scope.set_interface(0)  # BULK
             self.scope.set_num_channels(2)
-            self.scope.set_sample_rate(102)
 
-            # Ganhos iniciales
-            self.scope.set_ch1_voltage_range(10)
-            self.scope.set_ch2_voltage_range(10)
+            self.print_data = True
+            self.counter = 0
+            self.sync_minimum = True
+            with open("board/data.csv", "w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["CH1", "CH2"])
 
             # Thread de captura
             self.scope_is_run = True
             self.scope_thread = Thread(target=self.get_data, daemon=True)
             self.scope_thread.start()
 
-            self.log_event("Oscilloscope started")
+            self.log_event("Oscilloscope started")           
 
         except Exception as e:
             self.log_event(f"Scope error: {e}")
@@ -808,13 +794,74 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         """Captura contínua de los dos canales del Hantek."""
         try:
             self.scope.start_capture()
-            self.scope.read_data(data_size=0xC00, raw=True)  # Descartar primer bloque
+            self.scope.read_data(data_size=self.data_size, raw=True)  # Descartar primer bloque
+
+
+            last_time = time.perf_counter()
+            interval_history = []
+            HISTORY_SIZE = 20
+            LATE_THRESHOLD = 2.0
+
 
             while self.scope_is_run:
-                raw_ch1, raw_ch2 = self.scope.read_data(data_size=0xC00, raw=True)
+                raw_ch1, raw_ch2 = self.scope.read_data(data_size=self.data_size, raw=True)
 
-                if len(raw_ch1) != 0xC00 or len(raw_ch2) != 0xC00:
+                interval_ms = (time.perf_counter() - last_time) * 1000.0
+                last_time = time.perf_counter()
+
+                interval_history.append(interval_ms)
+                if len(interval_history) > HISTORY_SIZE:
+                    interval_history.pop(0)
+
+                avg_ms = sum(interval_history) / len(interval_history)
+                ratio = interval_ms / avg_ms if avg_ms > 0 else 1.0
+                is_late = ratio > LATE_THRESHOLD
+
+                # Saltar frames LATE (scope ainda a estabilizar após mudança de frequência)
+                if is_late:
                     continue
+
+                if len(raw_ch1) != self.data_size or len(raw_ch2) != self.data_size:
+                    continue
+
+                # --- ZERO-CROSSING SYNC (raw ADC integers, mais rápido) ---
+                # Ponto médio: centro do intervalo, robusto para sinais assimétricos
+                raw_max = max(raw_ch1)
+                raw_min = min(raw_ch1)
+                midpoint = (raw_max + raw_min) // 2
+                hyst = max(1, (raw_max - raw_min) // 20)  # ~5% da amplitude
+                lo = midpoint - hyst
+                hi = midpoint + hyst
+
+                # Máquina de estados - forward: primeiro cruzamento ascendente
+                # (funciona mesmo quando o sinal muda lentamente - muitas amostras/ciclo)
+                sync_start = 0
+                state_low = False
+                for i in range(len(raw_ch1)):
+                    v = raw_ch1[i]
+                    if v < lo:
+                        state_low = True
+                    elif state_low and v > hi:
+                        sync_start = i
+                        break
+
+                # Máquina de estados - backward: último cruzamento ascendente
+                sync_end = len(raw_ch1)
+                state_high = False
+                for i in range(len(raw_ch1) - 1, sync_start, -1):
+                    v = raw_ch1[i]
+                    if v > hi:
+                        state_high = True
+                    elif state_high and v < lo:
+                        sync_end = i + 1  # cruzamento ascendente estava aqui
+                        break
+
+                # Usar apenas ciclos completos: do primeiro ao último crossing
+                if sync_end > sync_start + (self.data_size // 8):
+                    raw_ch1 = raw_ch1[sync_start:sync_end]
+                    raw_ch2 = raw_ch2[sync_start:sync_end]
+                # --- FIM ZERO-CROSSING SYNC ---
+
 
                 ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
                 ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
@@ -823,6 +870,14 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                 with self.scope_lock:
                     self.x_signal = ch1
                     self.y_signal = ch2
+                    if self.print_data:
+                        with open("board/data.csv", "a", newline="") as file:
+                            writer = csv.writer(file)
+                            for i in range(len(ch1)):
+                                writer.writerow([ch1[i], ch2[i]])
+                        self.counter += 1
+                        if self.counter == 2:
+                            self.print_data = False
 
         except Exception as e:
             self.signals.scope_message.emit(f"Scope thread error: {e}")
@@ -848,34 +903,58 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         if not x or not y:
             return
 
-        # 1. Empurrar o buffer (shift)
-        for i in range(self.persistence_depth - 1, 0, -1):
-            self.persistence_buffer[i] = self.persistence_buffer[i - 1]
+        # --- REMOÇÃO DE ARTEFACTOS POR SALTO XY (detecção adaptativa) ---
+        n = len(x)
+        if n > 4:
+            gaps = [(x[i]-x[i-1])**2 + (y[i]-y[i-1])**2 for i in range(1, n)]
+            # Usar apenas os 90% menores para calcular média/sigma (exclui os próprios artefactos)
+            sorted_gaps = sorted(gaps)
+            trim_end = max(1, int(len(sorted_gaps) * 0.90))
+            trimmed = sorted_gaps[:trim_end]
+            mean_g = sum(trimmed) / len(trimmed)
+            # Desvio padrão dos trimmed gaps
+            var_g = sum((g - mean_g) ** 2 for g in trimmed) / len(trimmed)
+            std_g = var_g ** 0.5
+            threshold = mean_g + 4.0 * std_g  # outlier = média + 4σ
+            if threshold > 0:
+                nan = float('nan')
+                x_clean, y_clean = [x[0]], [y[0]]
+                for i in range(1, n):
+                    if gaps[i-1] > threshold:
+                        x_clean.append(nan)
+                        y_clean.append(nan)
+                    x_clean.append(x[i])
+                    y_clean.append(y[i])
+                x, y = x_clean, y_clean
+        # --- FIM REMOÇÃO ARTEFACTOS ---
 
-        # 2. Inserir o frame novo no topo
-        self.persistence_buffer[0] = (x, y)
+        # TEMPORARIAMENTE DESATIVADO - persistência comentada para analisar forma da sinal
+        # # 1. Empurrar o buffer (shift)
+        # for i in range(self.persistence_depth - 1, 0, -1):
+        #     self.persistence_buffer[i] = self.persistence_buffer[i - 1]
+
+        # # 2. Inserir o frame novo no topo
+        # self.persistence_buffer[0] = (x, y)
 
         # 2b. Atualizar a curva PRINCIPAL (para garantir visualização imediata)
         if hasattr(self, 'plot_curve'):
             self.plot_curve.setData(x, y)
 
-        # 3. Atualizar curvas
-        # 3. Atualizar curvas
-        if hasattr(self, 'persistence_curves'):
-             if len(self.persistence_curves) < self.persistence_depth:
-                # Force re-initialization if empty (Emergency fix attempt)
-                if len(self.persistence_curves) == 0:
-                     for i in range(self.persistence_depth):
-                        alpha = int(255 * (1 - i / self.persistence_depth))
-                        curve = self.plot.plot(pen=None, symbol='s', symbolSize=0.3, symbolBrush=(255, 255, 0, alpha))
-                        self.persistence_curves.append(curve)
-                return # Skip this frame, wait for next
-        else:
-             return
+        # # 3. Atualizar curvas de persistência
+        # if hasattr(self, 'persistence_curves'):
+        #      if len(self.persistence_curves) < self.persistence_depth:
+        #         if len(self.persistence_curves) == 0:
+        #              for i in range(self.persistence_depth):
+        #                 alpha = int(255 * (1 - i / self.persistence_depth))
+        #                 curve = self.plot.plot(pen=pg.mkPen((255, 255, 0, alpha), width=1), symbol=None)
+        #                 self.persistence_curves.append(curve)
+        #         return
+        # else:
+        #      return
 
-        for i in range(self.persistence_depth):
-            px, py = self.persistence_buffer[i]
-            self.persistence_curves[i].setData(px, py)
+        # for i in range(self.persistence_depth):
+        #     px, py = self.persistence_buffer[i]
+        #     self.persistence_curves[i].setData(px, py)
 
     def save_trace_image(self, path):
         """Save the current plot state to an image file."""
