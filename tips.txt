@@ -1,0 +1,3 @@
+python modules\fault_detector.py --train --path-samples "board/reference_noscatter" -> to train
+python .\modules\fault_detector.py --test --path-samples "board/reference_noscatter" 
+                                   --model-name "board/reference_noscatter./reference_noscatter.joblib" -> to test

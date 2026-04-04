@@ -1,31 +1,28 @@
-import sys
-from PyHT6022.LibUsbScope import Oscilloscope
-from threading import Thread
-import threading
-import csv
 
-from PySide6 import QtWidgets, QtCore
+from PyHT6022.LibUsbScope import Oscilloscope
+from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtWidgets import QWidget
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Signal, QObject
+from threading import Thread
+import serial.tools.list_ports
 import pyqtgraph as pg
-import pyqtgraph.exporters
+import threading
 import time
 import serial
-import serial.tools.list_ports
+import sys
 import os
-from PySide6.QtGui import QAction
 
 
-# Señales Qt para comunicación thread-safe
+
 class WorkerSignals(QObject):
-    """Señales para comunicación entre threads y la GUI"""
+    """Signals for communication between threads and GUI"""
     uart_message = Signal(str)
     scope_message = Signal(str)
     update_frequency = Signal(str)
     update_voltage = Signal(str)
     update_impedance = Signal(str)
-    trigger_capture = Signal()  # Aciona captura de forma thread-safe
+    trigger_capture = Signal()  # Triggers capture in a thread-safe manner
 
 
 class PortComboBox(QComboBox):
@@ -70,7 +67,6 @@ class ICProfileWidget(QWidget):
         # IC Name
         self.ic_name = QtWidgets.QLineEdit()
         layout.addRow("IC Name:", self.ic_name)
-        # layout.addRow(QtWidgets.QLabel("--- Capture ---"))
 
         # Pin Count
         self.pin_count = QtWidgets.QSpinBox()
@@ -86,7 +82,6 @@ class ICProfileWidget(QWidget):
         # Current Pin Status
         self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
         layout.addRow("Pin to capture:", self.lbl_pin_status)
-        # self.current_pin = 1
         
         # Status / New IC
         self.btn_new_ic = QtWidgets.QPushButton("New IC")
@@ -120,7 +115,6 @@ class ICProfileWidget(QWidget):
             os.makedirs(self.current_folder, exist_ok=True)
             QtWidgets.QMessageBox.information(self, "Created", f"Folder created:\n{self.current_folder}")
             self.btn_capture.setEnabled(True)
-            #self.new_ic()
 
     def new_ic(self):
         self.current_pin = 1
@@ -145,7 +139,6 @@ class ICProfileWidget(QWidget):
         os.makedirs(self.current_folder, exist_ok=True)
         
         ic_name = self.ic_name.text().strip()
-        # ic_label = self.ic_label.text().strip() # Already have folder
         
         if not ic_name:
              QtWidgets.QMessageBox.warning(self, "Missing Info", "Please enter IC Name.")
@@ -156,7 +149,6 @@ class ICProfileWidget(QWidget):
             return
 
         # Matches Tkinter format: ICName_ICLabel_pinX.png
-        # Tkinter: self.ic_name.get() + "_" +  self.ic_label.get() + "_" + "pin" + str(self.pin_captured) + ".png"
         filename = f"{ic_name}_{self.ic_label.text().strip()}_pin{self.current_pin}.png"
         path = os.path.join(self.current_folder, filename)
         
@@ -171,14 +163,21 @@ class ICProfileWidget(QWidget):
         # Open simple viewer for now
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Comparison Image", "", "Images (*.png *.jpg)")
         if file_path:
-             os.startfile(file_path) # Simple open in default viewer
+            # Cross-platform file open
+            if sys.platform == "win32":
+                os.startfile(file_path)
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.run(["open", file_path])
+            else:
+                import subprocess
+                subprocess.run(["xdg-open", file_path])
 
 
 class CurveTracerWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Configuración global de pyqtgraph
         self.connect_btn = None
         self.scope_checkbox = None
         self.baud_combo = None
@@ -189,7 +188,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.freq_label = None
         pg.setConfigOptions(antialias=True)
 
-        # Diccionarios de comandos (copiados de Functions para evitar dependencia de Tkinter)
+        # Command dictionaries
         self.frequencies = {"5Hz": "1", "20Hz": "2", "50Hz": "3", "60Hz": "4", "200Hz": "5", "500Hz": "6", "2kHz": "7", "5kHz": "8"}
         self.voltages = {"200mV": "9", "3.3V": "10", "5V": "11", "9V": "12"}
         self.d_impedance = {"45R": "13", "415R": "14", "726R": "15", "1.5kR": "16"}
@@ -197,7 +196,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.voltage_dict = {"V9": "200mV", "V10": "3.3V", "V11": "5V", "V12": "9V"}
         self.impedance_dict = {"R13": "45R", "R14": "415R", "R15": "726R", "R16": "1.5kR"}
 
-        # Inicializar señales para comunicación thread-safe
+        # Initialize signals for thread-safe communication
         self.signals = WorkerSignals()
         self.signals.uart_message.connect(lambda msg: self.log_event(msg))
         self.signals.scope_message.connect(lambda msg: self.log_event(msg))
@@ -205,7 +204,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.signals.update_voltage.connect(self.update_voltage_ui)
         self.signals.update_impedance.connect(self.update_impedance_ui)
 
-        # Variables de conexión y hardware
+        # Connection and hardware variables
         self.uart = None
         self.scope = None
         self.calibration = None
@@ -214,14 +213,19 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.scope_thread = None
         self.thread_uart = None
 
-        # Lock para acceso thread-safe a datos del scope
+        # Lock for thread-safe access to scope data
         self.scope_lock = threading.Lock()
 
-        # Configuración de ventana
+        # Window configuration
         self.setWindowTitle("Curve Tracer - Qt6")
         self.resize(1200, 800)
 
-        # Estado de datos
+        # Window icon
+        _icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scope.ico")
+        if os.path.exists(_icon_path):
+            self.setWindowIcon(QtGui.QIcon(_icon_path))
+
+        # Data state
         self.x_signal = []
         self.y_signal = []
         self.buffer_fifo_x = [0] * 6144
@@ -229,22 +233,21 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.data_size = 8000
         self.block_1 = True
 
-        # Variables de configuración
+        # Configuration variables
         self.frequency = "5Hz"
         self.voltage = "200mV"
         self.impedance = "45R"
         self.use_scope = True
 
-        # Referencias a RadioButtons
+        # References to RadioButtons
         self.freq_radios = {}
         self.volt_radios = {}
         self.imp_radios = {}
 
-        # ---- Layout principal ----
+        # ---- Main Layout ----
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main Layout (Horizontal split)
         main_layout = QtWidgets.QHBoxLayout(central_widget)
 
         # ---------------- LEFT PANEL (Content) ----------------
@@ -264,20 +267,15 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.plot = self.plot_widget.getPlotItem()
         self.plot_curve = self.plot.plot(pen=pg.mkPen('y', width=1), symbol=None)
 
-        # --- PERSISTÊNCIA PRO (tem de vir AQUI) ---
-        self.persistence_depth = 10
+        # Persistência — activa só a 5Hz e 20Hz (condensadores com arco parcial por frame)
+        self.persistence_depth = 20
         self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
         self.persistence_curves = []
-
-        # for i in range(self.persistence_depth):
-        #     alpha = int(255 * (1 - i / self.persistence_depth))
-        #     curve = self.plot.plot(
-        #         pen=None,
-        #         symbol='s',
-        #         symbolSize=0.3,
-        #         symbolBrush=(255, 255, 0, alpha)
-        #     )
-        #     self.persistence_curves.append(curve)
+        for i in range(self.persistence_depth):
+            # index 0 = frame mais recente (alpha máximo), N-1 = mais antigo (alpha mínimo)
+            alpha = int(255 * (self.persistence_depth - i) / self.persistence_depth)
+            curve = self.plot.plot(pen=pg.mkPen((255, 255, 0, alpha), width=1), symbol=None)
+            self.persistence_curves.append(curve)
 
         # 2. Indicators (Middle) - Horizontal
         indicators_group = QtWidgets.QGroupBox("Measurements")
@@ -302,9 +300,9 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         # Controls Group
         controls_group = QtWidgets.QGroupBox("Controls")
         controls_group.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Preferred) # Force minimum width
-        controls_layout = QtWidgets.QVBoxLayout() # Vertical Layout for the group
-        controls_layout.setSpacing(5)           # Reduce spacing between groups
-        controls_layout.setContentsMargins(5, 5, 5, 5) # Reduce margins
+        controls_layout = QtWidgets.QVBoxLayout()         # Vertical Layout for the group
+        controls_layout.setSpacing(5)                     # Reduce spacing between groups
+        controls_layout.setContentsMargins(5, 5, 5, 5)    # Reduce margins
         controls_group.setLayout(controls_layout)
         
         # 1. Frequency Column
@@ -313,10 +311,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.build_frequency_controls(freq_col_layout)
         freq_col_layout.addStretch() # Push items up
         controls_layout.addLayout(freq_col_layout)
-        
-        # Separator line (Optional, using frame or spacing)
-        # controls_layout.addSpacing(10)
-        
+       
         # 2. Voltage Column
         volt_col_layout = QtWidgets.QVBoxLayout()
         volt_col_layout.addWidget(QtWidgets.QLabel("<b>Voltage:</b>"))
@@ -344,12 +339,12 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.ic_dock = QtWidgets.QDockWidget("IC Profile", self)
         self.ic_profile_widget = ICProfileWidget()
         self.ic_profile_widget.capture_requested.connect(self.save_trace_image)
-        self.signals.trigger_capture.connect(self.ic_profile_widget.capture)  # Captura via serial
+        self.signals.trigger_capture.connect(self.ic_profile_widget.capture)  # Capture via UART
         self.ic_dock.setWidget(self.ic_profile_widget)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.ic_dock)
         self.ic_dock.hide()
 
-        # Timer de actualización del gráfico
+        # Timer for plot refreshing
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(10)  # 20ms = ~50 FPS
@@ -359,7 +354,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.disconnecting_device()
         event.accept()
 
-    # ----------------------- MENÚ -----------------------
+    # ----------------------- MENU -----------------------
 
     def build_menu(self):
         menubar = self.menuBar()
@@ -379,16 +374,15 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
         about_menu = menubar.addMenu("About")
 
-    # ----------------------- CONTROLES -----------------------
+    # ----------------------- CONTROLS -----------------------
 
     def build_frequency_controls(self, parent):
         group = QtWidgets.QGroupBox("Frequencies")
         layout = QtWidgets.QVBoxLayout(group)
-        layout.setSpacing(1)  # Reduce spacing between buttons
-        layout.setContentsMargins(1, 1, 1, 1) # Reduce group margins
+        layout.setSpacing(1)                    # Reduce spacing between buttons
+        layout.setContentsMargins(1, 1, 1, 1)   # Reduce group margins
 
         frequencies = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
-
 
         for f in frequencies:
             btn = QtWidgets.QRadioButton(f)
@@ -456,7 +450,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(2, 2, 2, 2)
 
         impedance = ["45R", "415R", "726R", "1.5kR"]
-
 
         for imp in impedance:
             btn = QtWidgets.QRadioButton(imp)
@@ -539,18 +532,17 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
         self.log_text.append(f"{now} - {text}")
 
-    # ----------------------- COMANDOS DE CONTROL -----------------------
+    # ----------------------- CONTROL COMMANDS -----------------------
 
     def show_frequency(self, value):
         if not self.connection_active or self.uart is None:
-            # self.log_event("UART connection object isn't initiated yet")
             return
 
-        # Envía comando
+        # Send command
         cmd = self.frequencies[value]
         self.send_command(cmd)
 
-        # Actualiza el osciloscopio
+        # Update oscilloscope
         if self.use_scope and self.scope is not None:
             if value == "5Hz":
                 self.scope.set_sample_rate(105)
@@ -565,7 +557,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def show_voltage(self, value):
         if not self.connection_active or self.uart is None:
-            # self.log_event("UART connection object isn't initiated yet")
             return
 
         cmd = self.voltages[value]
@@ -581,7 +572,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def show_impedance(self, value):
         if not self.connection_active or self.uart is None:
-            # self.log_event("UART connection object isn't initiated yet")
             return
 
         cmd = self.d_impedance[value]
@@ -597,7 +587,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         except Exception as e:
             self.log_event(repr(e))
 
-    # ----------------------- CONEXIÓN -----------------------
+    # ----------------------- CONNECTION -----------------------
 
     def connecting_window(self):
         dialog = QtWidgets.QDialog(self)
@@ -614,7 +604,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.port_combo.popup_about_to_show.connect(self.refresh_ports)
         layout.addWidget(self.port_combo, 0, 1)
 
-        # BAUD
+        # BAUD RATE
         layout.addWidget(QtWidgets.QLabel("Select Baud Rate:"), 1, 0)
         self.baud_combo = QtWidgets.QComboBox()
         self.baud_combo.addItems(["2400", "4800", "9600", "14400", "19200", "57600", "115200"])
@@ -667,7 +657,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             self.uart = serial.Serial(port, baudrate=baud, timeout=0.1, write_timeout=0.1)
             self.connection_active = True
 
-            # Thread de lectura UART
+            # UART reading thread
             self.thread_uart = Thread(target=self.read_from_port, daemon=True)
             self.thread_uart.start()
 
@@ -677,7 +667,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             self.log_event(repr(e))
             return
 
-        # Iniciar scope
+        # Start scope
         if self.use_scope:
             self.starting_scope()
             if self.scope_is_run:
@@ -709,7 +699,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
                     elif answer.startswith("cap"):
                         self.signals.uart_message.emit("Remote capture command received")
-                        self.signals.trigger_capture.emit()  # thread-safe: GUI executa a captura
+                        self.signals.trigger_capture.emit()  # thread-safe: GUI executes the capture
             except Exception as e:
                 self.signals.uart_message.emit(repr(e))
                 break
@@ -750,10 +740,10 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                 except Exception as e:
                     self.log_event(f"Scope error: {e}")
 
-    # ----------------------- OSCILOSCOPIO -----------------------
+    # ----------------------- OSCILLOSCOPE -----------------------
 
     def starting_scope(self):
-        """Configura e inicia la thread de captura del Hantek."""
+        """Configures and starts the Hantek capture thread."""
         try:
             self.scope = Oscilloscope()
             self.scope.setup()
@@ -762,25 +752,18 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                 self.log_event("Oscilloscope not detected")
                 return
 
-            # Firmware
+            # Upçoad the Firmware
             if not self.scope.is_device_firmware_present:
                 self.scope.flash_firmware()
 
-            # Calibración
+            # Calibration
             self.calibration = self.scope.get_calibration_values()
 
-            # Interface y canales
-            self.scope.set_interface(0)  # BULK
+            # Interface and channels
+            self.scope.set_interface(0)  # Bulk USB transmission
             self.scope.set_num_channels(2)
 
-            self.print_data = True
-            self.counter = 0
-            self.sync_minimum = True
-            with open("board/data.csv", "w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(["CH1", "CH2"])
-
-            # Thread de captura
+            # Capture thread
             self.scope_is_run = True
             self.scope_thread = Thread(target=self.get_data, daemon=True)
             self.scope_thread.start()
@@ -791,17 +774,15 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             self.log_event(f"Scope error: {e}")
 
     def get_data(self):
-        """Captura contínua de los dos canales del Hantek."""
+        """Continuous capture of the two Hantek channels."""
         try:
             self.scope.start_capture()
-            self.scope.read_data(data_size=self.data_size, raw=True)  # Descartar primer bloque
-
+            self.scope.read_data(data_size=self.data_size, raw=True)  # Discard the first block
 
             last_time = time.perf_counter()
             interval_history = []
             HISTORY_SIZE = 20
             LATE_THRESHOLD = 2.0
-
 
             while self.scope_is_run:
                 raw_ch1, raw_ch2 = self.scope.read_data(data_size=self.data_size, raw=True)
@@ -817,24 +798,24 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                 ratio = interval_ms / avg_ms if avg_ms > 0 else 1.0
                 is_late = ratio > LATE_THRESHOLD
 
-                # Saltar frames LATE (scope ainda a estabilizar após mudança de frequência)
+                # Skip LATE frames (scope still stabilizing after frequency change)
                 if is_late:
                     continue
 
                 if len(raw_ch1) != self.data_size or len(raw_ch2) != self.data_size:
                     continue
 
-                # --- ZERO-CROSSING SYNC (raw ADC integers, mais rápido) ---
-                # Ponto médio: centro do intervalo, robusto para sinais assimétricos
+                # --- ZERO-CROSSING SYNC (raw ADC integers) ---
+                # Midpoint: center of the interval, robust for asymmetric signals
                 raw_max = max(raw_ch1)
                 raw_min = min(raw_ch1)
                 midpoint = (raw_max + raw_min) // 2
-                hyst = max(1, (raw_max - raw_min) // 20)  # ~5% da amplitude
+                hyst = max(1, (raw_max - raw_min) // 20)  # ~5% of amplitude
                 lo = midpoint - hyst
                 hi = midpoint + hyst
 
-                # Máquina de estados - forward: primeiro cruzamento ascendente
-                # (funciona mesmo quando o sinal muda lentamente - muitas amostras/ciclo)
+                # State machine - forward: first rising edge
+                # (works even when the signal changes slowly - many samples/cycle)
                 sync_start = 0
                 state_low = False
                 for i in range(len(raw_ch1)):
@@ -845,7 +826,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                         sync_start = i
                         break
 
-                # Máquina de estados - backward: último cruzamento ascendente
+                # State machine - backward: last rising edge
                 sync_end = len(raw_ch1)
                 state_high = False
                 for i in range(len(raw_ch1) - 1, sync_start, -1):
@@ -853,46 +834,35 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                     if v > hi:
                         state_high = True
                     elif state_high and v < lo:
-                        sync_end = i + 1  # cruzamento ascendente estava aqui
+                        sync_end = i + 1  # rising edge was here
                         break
 
-                # Usar apenas ciclos completos: do primeiro ao último crossing
+                # Use only complete cycles: from the first to the last crossing
                 if sync_end > sync_start + (self.data_size // 8):
                     raw_ch1 = raw_ch1[sync_start:sync_end]
                     raw_ch2 = raw_ch2[sync_start:sync_end]
-                # --- FIM ZERO-CROSSING SYNC ---
+                # --- END ZERO-CROSSING SYNC ---
 
 
                 ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
                 ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
 
-                # Actualiza buffers de plot
+                # Update plot buffers
                 with self.scope_lock:
                     self.x_signal = ch1
                     self.y_signal = ch2
-                    if self.print_data:
-                        with open("board/data.csv", "a", newline="") as file:
-                            writer = csv.writer(file)
-                            for i in range(len(ch1)):
-                                writer.writerow([ch1[i], ch2[i]])
-                        self.counter += 1
-                        if self.counter == 2:
-                            self.print_data = False
 
         except Exception as e:
             self.signals.scope_message.emit(f"Scope thread error: {e}")
 
-    # ----------------------- ACTUALIZACIÓN DE GRÁFICO -----------------------
+    # ----------------------- PLOT UPDATE -----------------------
 
     def clear_persistence(self):
-        # 3. Atualizar curvas
-        if hasattr(self, 'persistence_curves'):
-             if len(self.persistence_curves) < self.persistence_depth:
-                return
-
+        """Cleans the buffer and hide all persistence curves."""
         for i in range(self.persistence_depth):
             self.persistence_buffer[i] = ([], [])
-            self.persistence_curves[i].setData([], [])
+            if i < len(self.persistence_curves):
+                self.persistence_curves[i].setData([], [])
 
 
     def update_plot(self):
@@ -903,19 +873,19 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         if not x or not y:
             return
 
-        # --- REMOÇÃO DE ARTEFACTOS POR SALTO XY (detecção adaptativa) ---
+        # --- REMOVAL OF ARTIFACTS BY XY JUMP (adaptive detection) ---
         n = len(x)
         if n > 4:
             gaps = [(x[i]-x[i-1])**2 + (y[i]-y[i-1])**2 for i in range(1, n)]
-            # Usar apenas os 90% menores para calcular média/sigma (exclui os próprios artefactos)
+            # Use only the smallest 90% to calculate mean/sigma (excludes the artifacts themselves)
             sorted_gaps = sorted(gaps)
             trim_end = max(1, int(len(sorted_gaps) * 0.90))
             trimmed = sorted_gaps[:trim_end]
             mean_g = sum(trimmed) / len(trimmed)
-            # Desvio padrão dos trimmed gaps
+            # Standard deviation of trimmed gaps
             var_g = sum((g - mean_g) ** 2 for g in trimmed) / len(trimmed)
             std_g = var_g ** 0.5
-            threshold = mean_g + 4.0 * std_g  # outlier = média + 4σ
+            threshold = mean_g + 4.0 * std_g  # outlier = mean + 4σ
             if threshold > 0:
                 nan = float('nan')
                 x_clean, y_clean = [x[0]], [y[0]]
@@ -926,35 +896,22 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                     x_clean.append(x[i])
                     y_clean.append(y[i])
                 x, y = x_clean, y_clean
-        # --- FIM REMOÇÃO ARTEFACTOS ---
+        # --- END REMOVAL OF ARTIFACTS ---
 
-        # TEMPORARIAMENTE DESATIVADO - persistência comentada para analisar forma da sinal
-        # # 1. Empurrar o buffer (shift)
-        # for i in range(self.persistence_depth - 1, 0, -1):
-        #     self.persistence_buffer[i] = self.persistence_buffer[i - 1]
+        if self.frequency in ("5Hz", "20Hz"):
+            # PERSISTENCE MODE: accumulates frames to reconstruct the complete ellipse
+            # (at 5Hz and 20Hz each frame captures only a partial arc of the curve)
+            for i in range(self.persistence_depth - 1, 0, -1):
+                self.persistence_buffer[i] = self.persistence_buffer[i - 1]
+            self.persistence_buffer[0] = (x, y)
 
-        # # 2. Inserir o frame novo no topo
-        # self.persistence_buffer[0] = (x, y)
-
-        # 2b. Atualizar a curva PRINCIPAL (para garantir visualização imediata)
-        if hasattr(self, 'plot_curve'):
+            self.plot_curve.setData([], [])  # hide main curve (replaced by persistence)
+            for i in range(self.persistence_depth):
+                px, py = self.persistence_buffer[i]
+                self.persistence_curves[i].setData(px, py)
+        else:
+            # NORMAL MODE: only the real-time curve, without persistence
             self.plot_curve.setData(x, y)
-
-        # # 3. Atualizar curvas de persistência
-        # if hasattr(self, 'persistence_curves'):
-        #      if len(self.persistence_curves) < self.persistence_depth:
-        #         if len(self.persistence_curves) == 0:
-        #              for i in range(self.persistence_depth):
-        #                 alpha = int(255 * (1 - i / self.persistence_depth))
-        #                 curve = self.plot.plot(pen=pg.mkPen((255, 255, 0, alpha), width=1), symbol=None)
-        #                 self.persistence_curves.append(curve)
-        #         return
-        # else:
-        #      return
-
-        # for i in range(self.persistence_depth):
-        #     px, py = self.persistence_buffer[i]
-        #     self.persistence_curves[i].setData(px, py)
 
     def save_trace_image(self, path):
         """Save the current plot state to an image file."""
