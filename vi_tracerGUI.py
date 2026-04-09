@@ -1,19 +1,16 @@
 
+from PySide6.QtWidgets import QWidget, QComboBox, QLabel, QLineEdit, QPushButton
 from PyHT6022.LibUsbScope import Oscilloscope
 from PySide6 import QtWidgets, QtCore, QtGui
-from PySide6.QtWidgets import QWidget
-from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Signal, QObject
-from threading import Thread
 import serial.tools.list_ports
+from threading import Thread
 import pyqtgraph as pg
 import threading
-import time
 import serial
+import time
 import sys
 import os
-
-
 
 class WorkerSignals(QObject):
     """Signals for communication between threads and GUI"""
@@ -56,16 +53,16 @@ class ICProfileWidget(QWidget):
         layout = QtWidgets.QFormLayout(self)
 
         # Board Name
-        self.board_name = QtWidgets.QLineEdit()
+        self.board_name = QLineEdit()
         layout.addRow("Board Name:", self.board_name)
 
         # IC Label (U...)
-        self.ic_label = QtWidgets.QLineEdit()
+        self.ic_label = QLineEdit()
         self.ic_label.setFixedWidth(60)
         layout.addRow("IC Label (U..):", self.ic_label)
 
         # IC Name
-        self.ic_name = QtWidgets.QLineEdit()
+        self.ic_name = QLineEdit()
         layout.addRow("IC Name:", self.ic_name)
 
         # Pin Count
@@ -75,27 +72,27 @@ class ICProfileWidget(QWidget):
         layout.addRow("Nº of Pins:", self.pin_count)     
 
         # Create Tree Button
-        self.btn_create_tree = QtWidgets.QPushButton("Create/Select Tree")
+        self.btn_create_tree = QPushButton("Create/Select Tree")
         self.btn_create_tree.clicked.connect(self.create_tree)
         layout.addRow(self.btn_create_tree)
 
         # Current Pin Status
-        self.lbl_pin_status = QtWidgets.QLabel("Pin 1")
+        self.lbl_pin_status = QLabel("Pin 1")
         layout.addRow("Pin to capture:", self.lbl_pin_status)
         
         # Status / New IC
-        self.btn_new_ic = QtWidgets.QPushButton("New IC")
+        self.btn_new_ic = QPushButton("New IC")
         self.btn_new_ic.clicked.connect(self.new_ic)
         layout.addRow(self.btn_new_ic)
 
         # Capture Button
-        self.btn_capture = QtWidgets.QPushButton("Capture Trace")
+        self.btn_capture = QPushButton("Capture Trace")
         self.btn_capture.clicked.connect(self.capture)
         self.btn_capture.setEnabled(False)
         layout.addRow(self.btn_capture)
 
         # View Comparison
-        self.btn_view_comp = QtWidgets.QPushButton("View Comparison")
+        self.btn_view_comp = QPushButton("View Comparison")
         self.btn_view_comp.clicked.connect(self.view_comparison)
         layout.addRow(self.btn_view_comp)
 
@@ -233,7 +230,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.data_size = 8000
         self.block_1 = True
 
-        # Configuration variables
+        # Initial configuration variables
         self.frequency = "5Hz"
         self.voltage = "200mV"
         self.impedance = "45R"
@@ -267,12 +264,12 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         self.plot = self.plot_widget.getPlotItem()
         self.plot_curve = self.plot.plot(pen=pg.mkPen('y', width=1), symbol=None)
 
-        # Persistência — activa só a 5Hz e 20Hz (condensadores com arco parcial por frame)
+        # Persistence — actives only at 5Hz and 20Hz
         self.persistence_depth = 20
         self.persistence_buffer = [([], []) for _ in range(self.persistence_depth)]
         self.persistence_curves = []
         for i in range(self.persistence_depth):
-            # index 0 = frame mais recente (alpha máximo), N-1 = mais antigo (alpha mínimo)
+            # index 0 = most recent frame, N-1 = oldest frame
             alpha = int(255 * (self.persistence_depth - i) / self.persistence_depth)
             curve = self.plot.plot(pen=pg.mkPen((255, 255, 0, alpha), width=1), symbol=None)
             self.persistence_curves.append(curve)
@@ -285,7 +282,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         left_panel_layout.addWidget(indicators_group)
 
         # 3. Log (Bottom)
-        metrics_label = QtWidgets.QLabel("Events Monitor:")
+        metrics_label = QLabel("Events Monitor:")
         left_panel_layout.addWidget(metrics_label)
         
         self.log_text = QtWidgets.QTextEdit()
@@ -307,21 +304,21 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         
         # 1. Frequency Column
         freq_col_layout = QtWidgets.QVBoxLayout()
-        freq_col_layout.addWidget(QtWidgets.QLabel("<b>Frequency:</b>"))
+        freq_col_layout.addWidget(QLabel("<b>Frequency:</b>"))
         self.build_frequency_controls(freq_col_layout)
         freq_col_layout.addStretch() # Push items up
         controls_layout.addLayout(freq_col_layout)
        
         # 2. Voltage Column
         volt_col_layout = QtWidgets.QVBoxLayout()
-        volt_col_layout.addWidget(QtWidgets.QLabel("<b>Voltage:</b>"))
+        volt_col_layout.addWidget(QLabel("<b>Voltage:</b>"))
         self.build_voltage_controls(volt_col_layout)
         volt_col_layout.addStretch()
         controls_layout.addLayout(volt_col_layout)
         
         # 3. Impedance Column
         imp_col_layout = QtWidgets.QVBoxLayout()
-        imp_col_layout.addWidget(QtWidgets.QLabel("<b>Impedance:</b>"))
+        imp_col_layout.addWidget(QLabel("<b>Impedance:</b>"))
         self.build_impedance_controls(imp_col_layout)
         imp_col_layout.addStretch()
         controls_layout.addLayout(imp_col_layout)
@@ -332,7 +329,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
         # -----------------------------------------------------
     
-        # Menú
+        # Menu
         self.build_menu()
 
         # IC Profile Dock
@@ -373,6 +370,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         device_menu.addAction("Disconnect", self.disconnecting_device)
 
         about_menu = menubar.addMenu("About")
+        about_menu.addAction("About this program...", self.about_window)
 
     # ----------------------- CONTROLS -----------------------
 
@@ -381,7 +379,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(group)
         layout.setSpacing(1)                    # Reduce spacing between buttons
         layout.setContentsMargins(1, 1, 1, 1)   # Reduce group margins
-
         frequencies = ["5Hz", "20Hz", "50Hz", "60Hz", "200Hz", "500Hz", "2kHz", "5kHz"]
 
         for f in frequencies:
@@ -414,9 +411,7 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(group)
         layout.setSpacing(1)
         layout.setContentsMargins(2, 2, 2, 2)
-
         voltages = ["200mV", "3.3V", "5V", "9V"]
-
 
         for v in voltages:
             btn = QtWidgets.QRadioButton(v)
@@ -448,7 +443,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(group)
         layout.setSpacing(1)
         layout.setContentsMargins(2, 2, 2, 2)
-
         impedance = ["45R", "415R", "726R", "1.5kR"]
 
         for imp in impedance:
@@ -478,9 +472,9 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
 
     def build_indicators(self, parent):
         # Create labels
-        self.freq_label = QtWidgets.QLabel("5Hz")
-        self.volt_label = QtWidgets.QLabel("200mV")
-        self.imp_label = QtWidgets.QLabel("45R")
+        self.freq_label = QLabel("5Hz")
+        self.volt_label = QLabel("200mV")
+        self.imp_label = QLabel("45R")
 
         font = self.freq_label.font()
         font.setPointSize(14) # Reduced from 20 to 14
@@ -490,32 +484,28 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         
         # 1. Frequency Column
         freq_layout = QtWidgets.QVBoxLayout()
-        freq_layout.addWidget(QtWidgets.QLabel("Frequency"))
+        freq_layout.addWidget(QLabel("Frequency"))
         freq_layout.addWidget(self.freq_label)
-        parent.addLayout(freq_layout)
-        
+        parent.addLayout(freq_layout)     
         parent.addSpacing(30)
 
         # 2. Voltage Column
         volt_layout = QtWidgets.QVBoxLayout()
-        volt_layout.addWidget(QtWidgets.QLabel("Voltage"))
+        volt_layout.addWidget(QLabel("Voltage"))
         volt_layout.addWidget(self.volt_label)
-        parent.addLayout(volt_layout)
-        
+        parent.addLayout(volt_layout)   
         parent.addSpacing(30)
 
         # 3. Impedance Column
         imp_layout = QtWidgets.QVBoxLayout()
-        imp_layout.addWidget(QtWidgets.QLabel("Impedance"))
+        imp_layout.addWidget(QLabel("Impedance"))
         imp_layout.addWidget(self.imp_label)
-        parent.addLayout(imp_layout)
-        
+        parent.addLayout(imp_layout)      
         parent.addStretch()
 
     def build_event_monitor(self, parent):
         group = QtWidgets.QGroupBox("Events monitor")
         layout = QtWidgets.QVBoxLayout(group)
-
         self.log = QtWidgets.QTextEdit()
         self.log.setReadOnly(True)
         self.log.setStyleSheet("""
@@ -523,7 +513,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             color: #0f0;
             font-family: Consolas, monospace;
         """)
-
         layout.addWidget(self.log)
         parent.addWidget(group)
 
@@ -594,18 +583,17 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         dialog.setWindowTitle("Configure serial communication")
         dialog.setModal(True)
         dialog.resize(350, 100)
-
         layout = QtWidgets.QGridLayout(dialog)
 
         # PORTS
-        layout.addWidget(QtWidgets.QLabel("Select Port:"), 0, 0)
+        layout.addWidget(QLabel("Select Port:"), 0, 0)
         
         self.port_combo = PortComboBox()
         self.port_combo.popup_about_to_show.connect(self.refresh_ports)
         layout.addWidget(self.port_combo, 0, 1)
 
         # BAUD RATE
-        layout.addWidget(QtWidgets.QLabel("Select Baud Rate:"), 1, 0)
+        layout.addWidget(QLabel("Select Baud Rate:"), 1, 0)
         self.baud_combo = QtWidgets.QComboBox()
         self.baud_combo.addItems(["2400", "4800", "9600", "14400", "19200", "57600", "115200"])
         self.baud_combo.setCurrentText("9600")
@@ -617,13 +605,12 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.scope_checkbox, 2, 1)
 
         # CONNECT BUTTON
-        self.connect_btn = QtWidgets.QPushButton("Connect")
+        self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(lambda: self.connecting_device(dialog))
         layout.addWidget(self.connect_btn, 3, 1)
 
         # Initial refresh
         self.refresh_ports()
-
         dialog.exec()
 
     def refresh_ports(self):
@@ -660,7 +647,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             # UART reading thread
             self.thread_uart = Thread(target=self.read_from_port, daemon=True)
             self.thread_uart.start()
-
             self.send_command("hello")
 
         except Exception as e:
@@ -778,7 +764,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         try:
             self.scope.start_capture()
             self.scope.read_data(data_size=self.data_size, raw=True)  # Discard the first block
-
             last_time = time.perf_counter()
             interval_history = []
             HISTORY_SIZE = 20
@@ -843,7 +828,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
                     raw_ch2 = raw_ch2[sync_start:sync_end]
                 # --- END ZERO-CROSSING SYNC ---
 
-
                 ch1 = self.scope.scale_read_data(raw_ch1, channel=1)
                 ch2 = self.scope.scale_read_data(raw_ch2, channel=2)
 
@@ -863,7 +847,6 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
             self.persistence_buffer[i] = ([], [])
             if i < len(self.persistence_curves):
                 self.persistence_curves[i].setData([], [])
-
 
     def update_plot(self):
         with self.scope_lock:
@@ -920,13 +903,21 @@ class CurveTracerWindow(QtWidgets.QMainWindow):
         exporter.export(path)
         self.log_event(f"Saved trace to {os.path.basename(path)}")
 
+    def about_window(self):
+        """Show the about window."""
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("About this program")
+        dialog.setModal(True)
+        dialog.resize(350, 100)
+        layout = QtWidgets.QGridLayout(dialog)
+        layout.addWidget(QLabel("My V/I Curve Tracer, 2023 - 2026. Version 0.9"), 0, 0)
+        dialog.exec()
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
     win = CurveTracerWindow()
     win.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
